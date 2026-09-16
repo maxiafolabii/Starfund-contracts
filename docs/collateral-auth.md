@@ -1,6 +1,6 @@
 # Collateral authorization and access rules
 
-The LiquiFact escrow contract lets the SME record and clear **off-chain collateral pledge metadata**. This document is the authoritative, code-accurate reference for **who may call what**, in which state, the **exact guard ordering**, and the **operator-facing rejection codes**.
+The StarFund escrow contract lets the SME record and clear **off-chain collateral pledge metadata**. This document is the authoritative, code-accurate reference for **who may call what**, in which state, the **exact guard ordering**, and the **operator-facing rejection codes**.
 
 > **Scope:** metadata only. These entrypoints do **not** transfer tokens, reserve balances, verify custody, create an on-chain lien, or block `settle` / `withdraw` / `claim_investor_payout`. See [`docs/escrow-sme-collateral.md`](escrow-sme-collateral.md) for the functional model.
 

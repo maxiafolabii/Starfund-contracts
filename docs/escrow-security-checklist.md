@@ -296,7 +296,7 @@ Line numbers refer to `escrow/src/lib.rs` at schema version 6; re-audit after re
 ### Negative-auth test coverage
 
 All state-mutating entrypoints are actively tested against incorrect authorization rules.
-See the canonical compliance test section in [`escrow/src/tests/admin.rs`](file:///home/demigodjayydy/Desktop/Liquifact-contracts/escrow/src/tests/admin.rs) under `auth_audit_*`.
+See the canonical compliance test section in [`escrow/src/tests/admin.rs`](file:///home/demigodjayydy/Desktop/Starfund-contracts/escrow/src/tests/admin.rs) under `auth_audit_*`.
 
 | Entrypoint | Test location |
 |---|---|

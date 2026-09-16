@@ -1,4 +1,4 @@
-# LiquiFact Escrow Event Schema Reference
+# StarFund Escrow Event Schema Reference
 
 Authoritative event reference for indexers, analytics jobs, read API
 projections, and audit tooling that consume events emitted by
@@ -27,7 +27,7 @@ default `#[contractevent]` data format is a map keyed by field name. Indexers
 should treat field order in this document as the canonical struct order from
 `escrow/src/lib.rs`.
 
-The `name` field is a `#[topic] Symbol` in every LiquiFact event. It carries the
+The `name` field is a `#[topic] Symbol` in every StarFund event. It carries the
 short routing symbol passed with `symbol_short!(...)`, such as `funded` or
 `escrow_sd`.
 
@@ -556,7 +556,7 @@ Status values:
 ## Indexer Notes
 
 - Prefer filtering by `contractId` plus `topic[1] == name` when routing by the
-  LiquiFact short event symbol. `topic[0]` is the generated Rust event-struct
+  StarFund short event symbol. `topic[0]` is the generated Rust event-struct
   symbol.
 - Use `(ledger, txHash, eventIndex)` as the idempotency cursor, as described in
   `docs/escrow-indexer.md`.

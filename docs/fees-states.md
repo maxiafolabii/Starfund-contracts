@@ -1,12 +1,12 @@
 # Fees State Machine Documentation
 
-This document describes the state machine, allowed state transitions, entrypoint enforcement, and invariants governing protocol fees in `LiquifactEscrow`.
+This document describes the state machine, allowed state transitions, entrypoint enforcement, and invariants governing protocol fees in `StarfundEscrow`.
 
 ---
 
 ## Overview & Scope
 
-"Fees" in this contract refers exclusively to the immutable `protocol_fee_bps` split applied to the SME principal during `LiquifactEscrow::withdraw`. Fee rates are set once at contract initialization (`init`) and cannot be modified afterwards.
+"Fees" in this contract refers exclusively to the immutable `protocol_fee_bps` split applied to the SME principal during `StarfundEscrow::withdraw`. Fee rates are set once at contract initialization (`init`) and cannot be modified afterwards.
 
 ---
 
@@ -38,23 +38,23 @@ stateDiagram-v2
 | Current State | Description | Trigger / Entrypoint | Next Allowed State |
 | :--- | :--- | :--- | :--- |
 | **`Unconfigured`** | Contract is deployed but uninitialized. `DataKey::ProtocolFeeBps` is unset in storage. | Contract Deployment | `Configured` |
-| **`Configured`** | `protocol_fee_bps` (0 <= bps <= 10,000) is stored immutably under `DataKey::ProtocolFeeBps`. | `LiquifactEscrow::init` | **Immutable** (No fee updates allowed) |
+| **`Configured`** | `protocol_fee_bps` (0 <= bps <= 10,000) is stored immutably under `DataKey::ProtocolFeeBps`. | `StarfundEscrow::init` | **Immutable** (No fee updates allowed) |
 | **`Idle`** | Contract initialized and operational; waiting for SME withdrawal. | `init` complete | `FeeCalculation` |
-| **`FeeCalculation`** | Calculates fee split and SME payout floor division. | `LiquifactEscrow::withdraw` | `DisburseTreasury` or `DirectDisburse` |
+| **`FeeCalculation`** | Calculates fee split and SME payout floor division. | `StarfundEscrow::withdraw` | `DisburseTreasury` or `DirectDisburse` |
 | **`WithdrawalComplete`** | Transfers executed according to the computed fee split. | Settlement completion | `Idle` |
 
 ---
 
 ## Entrypoints & State Enforcement
 
-### 1. `LiquifactEscrow::init`
+### 1. `StarfundEscrow::init`
 * **Auth Guard:** `admin.require_auth()`
 * **Parameter:** `protocol_fee_bps: Option<i64>` (defaults `None` to `0`)
 * **Validation:** Enforces 0 <= protocol_fee_bps <= 10,000.
 * **Rejection:** Values outside this range revert with `EscrowError::ProtocolFeeBpsOutOfRange` (**215**).
 * **Storage Write:** Saves `protocol_fee_bps` immutably under `DataKey::ProtocolFeeBps`.
 
-### 2. `LiquifactEscrow::withdraw`
+### 2. `StarfundEscrow::withdraw`
 * **Auth Guard:** `sme_address.require_auth()`
 * **State Operations:**
   1. Reads `protocol_fee_bps` from `DataKey::ProtocolFeeBps`.

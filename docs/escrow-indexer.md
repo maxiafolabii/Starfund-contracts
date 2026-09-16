@@ -1,6 +1,6 @@
 # Escrow Indexer Ops (Stellar/Soroban)
 
-Minimal indexer strategy for `liquifact_escrow`: what to subscribe to as events, what to poll as
+Minimal indexer strategy for `starfund_escrow`: what to subscribe to as events, what to poll as
 state keys, and how to handle stale-RPC vs chainhead disagreement.
 
 ---

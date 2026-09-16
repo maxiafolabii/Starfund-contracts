@@ -9,7 +9,7 @@ The share of an investor is determined by their contribution relative to the **t
 $$Share_{investor} = \frac{Contribution_{investor}}{TotalPrincipal_{snapshot}}$$
 
 ### Why `TotalPrincipal`?
-Liquifact escrows allow **over-funding** (deposits that exceed the `funding_target` in the same ledger). The `TotalPrincipal` in the `FundingCloseSnapshot` is the authoritative denominator for all pro-rata calculations.
+Starfund escrows allow **over-funding** (deposits that exceed the `funding_target` in the same ledger). The `TotalPrincipal` in the `FundingCloseSnapshot` is the authoritative denominator for all pro-rata calculations.
 
 ## 📏 Rounding Policy
 
@@ -62,7 +62,7 @@ function calculatePayout(contribution, totalPrincipal, settleAmount) {
 The contract exposes an authoritative on-chain implementation of the formula above:
 
 ```
-LiquifactEscrow::compute_investor_payout(investor: Address) → i128
+StarfundEscrow::compute_investor_payout(investor: Address) → i128
 ```
 
 This view derives `effective_yield_bps` from `DataKey::InvestorEffectiveYield` (tiered ladder
@@ -183,7 +183,7 @@ second transfer anyway, but the early return avoids the call entirely.
 ## 🔗 On-Chain Aggregate View: `get_settlement_pool`
 
 ```
-LiquifactEscrow::get_settlement_pool(env) → i128
+StarfundEscrow::get_settlement_pool(env) → i128
 ```
 
 Returns the **total pool** the SME must repay to fully satisfy all investors, computed

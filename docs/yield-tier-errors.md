@@ -1,6 +1,6 @@
 # Yield-Tier Errors
 
-The LiquiFact escrow contract supports yield-tiers, allowing investors to commit to a `min_lock_secs` duration in exchange for a higher yield. Errors specific to configuring and using this feature emit typed `EscrowError` codes.
+The StarFund escrow contract supports yield-tiers, allowing investors to commit to a `min_lock_secs` duration in exchange for a higher yield. Errors specific to configuring and using this feature emit typed `EscrowError` codes.
 
 ## Error Reference
 

@@ -1,6 +1,6 @@
 # Escrow Token Integration Security Checklist
 
-This checklist describes the supported assumptions and explicit unsupported token behaviors for integrations that use the LiquiFact escrow contract with cross-contract token assets.
+This checklist describes the supported assumptions and explicit unsupported token behaviors for integrations that use the StarFund escrow contract with cross-contract token assets.
 
 ## Supported token assumptions
 

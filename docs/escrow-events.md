@@ -1,6 +1,6 @@
 # Escrow Contract Events
 
-This document provides a reference for indexers and block explorers to consume events emitted by the Liquifact Escrow contract.
+This document provides a reference for indexers and block explorers to consume events emitted by the Starfund Escrow contract.
 
 ## 📡 Event Structure
 
@@ -323,4 +323,4 @@ To track all activity for a specific invoice, indexers should filter for events 
 To track an investor's portfolio, filter for events where **Topic 3** matches the investor's `Address`. This applies to `EscrowFunded` and `InvestorPayoutClaimed`.
 
 ### Decoding payloads
-Payloads are XDR-encoded. Use the `liquifact_escrow` WASM/interface or the `Stellar SDK` to decode the `data` field into the corresponding Rust structs.
+Payloads are XDR-encoded. Use the `starfund_escrow` WASM/interface or the `Stellar SDK` to decode the `data` field into the corresponding Rust structs.

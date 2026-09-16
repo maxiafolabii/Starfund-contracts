@@ -1,6 +1,6 @@
 # Attestation State Machine
 
-This document outlines the state machine for attestations within the Liquifact escrow contract. Attestations are managed through two distinct mechanisms: the **Primary Attestation Hash** (single-set) and the **Attestation Append Log** (append-only with revocation).
+This document outlines the state machine for attestations within the Starfund escrow contract. Attestations are managed through two distinct mechanisms: the **Primary Attestation Hash** (single-set) and the **Attestation Append Log** (append-only with revocation).
 
 ## 1. Primary Attestation Hash
 
@@ -19,7 +19,7 @@ stateDiagram-v2
 ```
 
 ### Enforcing Entrypoints
-- **`LiquifactEscrow::bind_primary_attestation_hash`**: Transitions the state from `Unbound` (absent) to `Bound`. If called when the state is already `Bound`, the contract rejects the transaction with a `PrimaryAttestationAlreadyBound` error.
+- **`StarfundEscrow::bind_primary_attestation_hash`**: Transitions the state from `Unbound` (absent) to `Bound`. If called when the state is already `Bound`, the contract rejects the transaction with a `PrimaryAttestationAlreadyBound` error.
 
 ---
 
@@ -42,9 +42,9 @@ stateDiagram-v2
 ```
 
 ### Enforcing Entrypoints
-- **`LiquifactEscrow::append_attestation_digest`** / **`append_attestation_digests`**: 
+- **`StarfundEscrow::append_attestation_digest`** / **`append_attestation_digests`**: 
   Transitions a new digest from `NonExistent` to `Appended`. The new digest is placed at the next available index in the log. If the log reaches `MAX_ATTESTATION_APPEND_ENTRIES`, it rejects the transaction with `AttestationAppendLogCapacityReached`.
-- **`LiquifactEscrow::revoke_attestation_digest`** / **`revoke_attestation_digests`**: 
+- **`StarfundEscrow::revoke_attestation_digest`** / **`revoke_attestation_digests`**: 
   Transitions an `Appended` digest to `Revoked` by setting the `AttestationRevoked(index)` DataKey. 
   - If the index is out of bounds, it rejects with `AttestationIndexOutOfRange`.
   - If the digest is already revoked, it rejects with `AttestationAlreadyRevoked`.

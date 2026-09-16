@@ -1,6 +1,6 @@
 # Collateral State Diagram
 
-This document describes the state machine for the **SME collateral commitment** in the LiquiFact escrow contract. Collateral is metadata-only and intentionally orthogonal to the escrow lifecycle status — no collateral operation reads or writes the escrow `status` field.
+This document describes the state machine for the **SME collateral commitment** in the StarFund escrow contract. Collateral is metadata-only and intentionally orthogonal to the escrow lifecycle status — no collateral operation reads or writes the escrow `status` field.
 
 ---
 

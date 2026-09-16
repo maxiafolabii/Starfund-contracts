@@ -1,6 +1,6 @@
 # Escrow Contract Error Messages
 
-This document contains reference codes for typed `EscrowError` values emitted by the LiquiFact escrow smart contract.
+This document contains reference codes for typed `EscrowError` values emitted by the StarFund escrow smart contract.
 
 ## Settlement & Bounds Errors
 

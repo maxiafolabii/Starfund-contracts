@@ -1,7 +1,7 @@
 # `set_protocol_fee_bps` — Admin Fee Setter
 
 This document describes the `set_protocol_fee_bps` entrypoint added by
-[issue #1094](https://github.com/Liquifact/Liquifact-contracts/issues/1094),
+[issue #1094](https://github.com/Starfund/Starfund-contracts/issues/1094),
 which allows an admin to update the protocol fee rate within a pre-configured
 operator ceiling.
 

@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Key design decisions for the LiquiFact escrow contract.
+Key design decisions for the StarFund escrow contract.
 
 | ADR | Title | Status |
 |-----|-------|--------|

@@ -1,6 +1,6 @@
-# LiquiFact Escrow Settlement Authorization Reference
+# StarFund Escrow Settlement Authorization Reference
 
-This document describes the authorization rules governing settlement-related entrypoints in the LiquiFact Escrow contract. It covers who may call each function, in which escrow state, and which errors are returned when preconditions fail.
+This document describes the authorization rules governing settlement-related entrypoints in the StarFund Escrow contract. It covers who may call each function, in which escrow state, and which errors are returned when preconditions fail.
 
 ---
 

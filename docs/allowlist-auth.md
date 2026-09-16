@@ -1,6 +1,6 @@
 # Allowlist Authorization and Access Rules
 
-This document describes the authorization rules governing the investor allowlist subsystem in the LiquiFact escrow contract. It is the authoritative reference for **who may call what**, in which contract states, the **exact guard ordering**, and the **operator-facing rejection codes**.
+This document describes the authorization rules governing the investor allowlist subsystem in the StarFund escrow contract. It is the authoritative reference for **who may call what**, in which contract states, the **exact guard ordering**, and the **operator-facing rejection codes**.
 
 > **Scope:** allowlist toggle, per-investor membership, pagination reads, and the allowlist gate on funding entrypoints. For the data model and invariants, see [`allowlist.md`](allowlist.md). For error codes, see [`allowlist-errors.md`](allowlist-errors.md).
 

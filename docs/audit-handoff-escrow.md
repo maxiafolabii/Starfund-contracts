@@ -1,6 +1,6 @@
-# LiquiFact Escrow — Audit Handoff Bundle
+# StarFund Escrow — Audit Handoff Bundle
 
-**Contract:** `liquifact_escrow` (`escrow/src/lib.rs`)  
+**Contract:** `starfund_escrow` (`escrow/src/lib.rs`)  
 **Schema version:** 5 (`SCHEMA_VERSION`)  
 **Soroban SDK:** 25.0  
 **Stellar protocol:** SEP-41 token interface  
@@ -206,6 +206,6 @@ All 91 tests pass. CI enforces `cargo llvm-cov --features testutils --fail-under
 Run locally:
 
 ```bash
-cargo test -p liquifact_escrow
-cargo llvm-cov --features testutils --fail-under-lines 95 --summary-only -p liquifact_escrow
+cargo test -p starfund_escrow
+cargo llvm-cov --features testutils --fail-under-lines 95 --summary-only -p starfund_escrow
 ```

@@ -1,4 +1,4 @@
-# LiquiFact Operator Runbook: Redeploy vs. On-Chain Upgrade
+# StarFund Operator Runbook: Redeploy vs. On-Chain Upgrade
 
 > **Scope:** Stellar / Soroban only. This runbook does not apply to EVM or
 > Solidity deployments. CLI examples use the `stellar` CLI; verify flag syntax
@@ -271,8 +271,8 @@ Pre-conditions:
   - Tests on Testnet pass.
 
 Steps:
-  1. cargo build --target wasm32v1-none --release -p liquifact_escrow
-  2. stellar contract upload --wasm target/.../liquifact_escrow.wasm ...
+  1. cargo build --target wasm32v1-none --release -p starfund_escrow
+  2. stellar contract upload --wasm target/.../starfund_escrow.wasm ...
      → captures NEW_WASM_HASH
   3. stellar contract invoke --id <ID> ... -- set_legal_hold --active true
      (blocks settlements/claims during the swap window)
@@ -301,8 +301,8 @@ Pre-conditions:
   - Testnet mirror has been upgraded and migrate() called successfully.
 
 Steps:
-  1. cargo build --target wasm32v1-none --release -p liquifact_escrow
-  2. stellar contract upload --wasm target/.../liquifact_escrow.wasm ...
+  1. cargo build --target wasm32v1-none --release -p starfund_escrow
+  2. stellar contract upload --wasm target/.../starfund_escrow.wasm ...
      → captures NEW_WASM_HASH
   3. stellar contract invoke --id <ID> ... -- get_version
      → note STORED_VERSION (e.g., 6)
@@ -336,33 +336,33 @@ Complete all items before promoting to Mainnet.
 rustup target add wasm32v1-none
 
 # 2. Build release WASM
-cargo build --target wasm32v1-none --release -p liquifact_escrow
+cargo build --target wasm32v1-none --release -p starfund_escrow
 
 # 3. Format check
 cargo fmt --all -- --check
 
 # 4. Lint (zero warnings)
-cargo clippy -p liquifact_escrow -- -D warnings
+cargo clippy -p starfund_escrow -- -D warnings
 
 # 5. Full test suite
-cargo test -p liquifact_escrow
+cargo test -p starfund_escrow
 
 # 6. Coverage gate (≥ 95% lines)
 cargo llvm-cov \
   --features testutils \
   --fail-under-lines 95 \
   --summary-only \
-  -p liquifact_escrow
+  -p starfund_escrow
 
 # 7. Confirm WASM artifact exists
-ls target/wasm32v1-none/release/liquifact_escrow.wasm
+ls target/wasm32v1-none/release/starfund_escrow.wasm
 ```
 
 ### Contract security checklist
 
 - [ ] `admin` is a multisig or governed contract (not an EOA alone).
 - [ ] `funding_token` is a standard SEP-41 token (no fee-on-transfer).
-- [ ] `treasury` address is controlled by LiquiFact governance.
+- [ ] `treasury` address is controlled by StarFund governance.
 - [ ] `invoice_id` matches off-chain invoice slug (ASCII alphanumeric + `_`,
       max 32 chars).
 - [ ] `maturity` is set in ledger timestamp seconds (not wall-clock oracle).
@@ -379,11 +379,11 @@ ls target/wasm32v1-none/release/liquifact_escrow.wasm
 export STELLAR_NETWORK=testnet
 export SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
 export SOURCE_SECRET=S...          # deployer secret key
-export LIQUIFACT_ADMIN_ADDRESS=G...
+export STARFUND_ADMIN_ADDRESS=G...
 
 # Upload WASM
 stellar contract upload \
-  --wasm target/wasm32v1-none/release/liquifact_escrow.wasm \
+  --wasm target/wasm32v1-none/release/starfund_escrow.wasm \
   --source $SOURCE_SECRET \
   --network $STELLAR_NETWORK
 
@@ -399,7 +399,7 @@ stellar contract invoke \
   --source $SOURCE_SECRET \
   --network $STELLAR_NETWORK \
   -- init \
-  --admin $LIQUIFACT_ADMIN_ADDRESS \
+  --admin $STARFUND_ADMIN_ADDRESS \
   --invoice_id INV001 \
   --sme_address G... \
   --amount 10000000000 \
@@ -431,7 +431,7 @@ that calls `env.deployer().update_current_contract_wasm(new_wasm_hash)`.
 ```bash
 # Step 1: Upload new WASM (get new hash)
 stellar contract upload \
-  --wasm target/wasm32v1-none/release/liquifact_escrow.wasm \
+  --wasm target/wasm32v1-none/release/starfund_escrow.wasm \
   --source $SOURCE_SECRET \
   --network $STELLAR_NETWORK
 

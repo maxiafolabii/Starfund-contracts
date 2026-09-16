@@ -1,4 +1,4 @@
-# LiquiFact Escrow State Machine Reference
+# StarFund Escrow State Machine Reference
 
 This document describes the smart contract's state machine, covering status values, transition paths, required authority, legal-hold constraints, and guard behaviors.
 

@@ -1,6 +1,6 @@
 # Pause Authorization Rules
 
-> Issue: [#826](https://github.com/Liquifact/Liquifact-contracts/issues/826)
+> Issue: [#826](https://github.com/Starfund/Starfund-contracts/issues/826)
 > Status: Accepted
 > Scope: `escrow/src/lib.rs`
 

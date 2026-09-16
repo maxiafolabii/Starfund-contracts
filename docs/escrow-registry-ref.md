@@ -2,7 +2,7 @@
 
 This document describes the lifecycle, semantics, and security properties of the
 optional off-chain registry hint stored under `DataKey::RegistryRef` in the
-Liquifact Escrow contract.
+Starfund Escrow contract.
 
 ---
 
@@ -46,7 +46,7 @@ boundary or as proof that this escrow is registered with the named contract.
 
 ### 1. Initialization (optional bind)
 
-`LiquifactEscrow::init` accepts `registry: Option<Address>` as a parameter.
+`StarfundEscrow::init` accepts `registry: Option<Address>` as a parameter.
 
 - `None` → key is not written; `get_registry_ref` returns `None`.
 - `Some(addr)` → `addr` is stored under `DataKey::RegistryRef`.

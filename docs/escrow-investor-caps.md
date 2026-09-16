@@ -2,7 +2,7 @@
 
 ## Overview
 
-The LiquiFact escrow contract provides configurable limits on the number of distinct investor addresses that can contribute to an invoice escrow. This feature helps manage risk, compliance requirements, and operational complexity by enforcing Sybil-limited counter semantics.
+The StarFund escrow contract provides configurable limits on the number of distinct investor addresses that can contribute to an invoice escrow. This feature helps manage risk, compliance requirements, and operational complexity by enforcing Sybil-limited counter semantics.
 
 ## Key Concepts
 
@@ -389,6 +389,6 @@ When deploying capped escrows:
 
 ## Conclusion
 
-The MaxUniqueInvestorsCap and UniqueFunderCount functionality provides a robust, Sybil-limited mechanism for controlling investor participation in LiquiFact escrows. While it doesn't prevent Sybil attacks, it offers operational control and compliance benefits with clear semantics and comprehensive edge case handling.
+The MaxUniqueInvestorsCap and UniqueFunderCount functionality provides a robust, Sybil-limited mechanism for controlling investor participation in StarFund escrows. While it doesn't prevent Sybil attacks, it offers operational control and compliance benefits with clear semantics and comprehensive edge case handling.
 
 The implementation prioritizes safety and predictability, with strict enforcement and clear error messages. Organizations should carefully consider their cap requirements during deployment; caps can be adjusted while open via admin-only commands.

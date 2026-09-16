@@ -1,6 +1,6 @@
 # Escrow Ledger Time Semantics
 
-This document explains how the LiquiFact Escrow contract handles time,
+This document explains how the StarFund Escrow contract handles time,
 why it uses ledger timestamps instead of wall-clock time, and how
 integrators and testers should reason about time-dependent operations.
 

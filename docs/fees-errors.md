@@ -10,7 +10,7 @@ All codes are **stable and append-only** — SDKs must branch on the numeric
 ## Scope
 
 "Fees" in this contract means the immutable `protocol_fee_bps` split applied to the
-SME's principal at [`LiquifactEscrow::withdraw`]. The fee rate is configured once at
+SME's principal at [`StarfundEscrow::withdraw`]. The fee rate is configured once at
 `init` (or updated via `set_protocol_fee_bps`) and realized only when the SME calls
 `withdraw`. Settlement, investor claims, and refunds never apply or reference
 `protocol_fee_bps`.

@@ -126,7 +126,7 @@ echo "TREASURY:  $TREASURY"
 ```
 
 > **⚠ Maintainer secret note:** In production, `admin` and `treasury` correspond to
-> `LIQUIFACT_ADMIN_ADDRESS` and the treasury multisig. Their secret keys (`SOURCE_SECRET`) must
+> `STARFUND_ADMIN_ADDRESS` and the treasury multisig. Their secret keys (`SOURCE_SECRET`) must
 > never be committed to version control or logged. The local identities above are simulation-only
 > throwaway keys.
 
@@ -143,7 +143,7 @@ cargo build --target wasm32v1-none --release
 The compiled artifact is at:
 
 ```
-target/wasm32v1-none/release/liquifact_escrow.wasm
+target/wasm32v1-none/release/starfund_escrow.wasm
 ```
 
 Optionally lint before deploying:
@@ -158,7 +158,7 @@ cargo clippy -p escrow -- -D warnings
 
 ```bash
 CONTRACT_ID=$(stellar contract deploy \
-  --wasm target/wasm32v1-none/release/liquifact_escrow.wasm \
+  --wasm target/wasm32v1-none/release/starfund_escrow.wasm \
   --source admin \
   --network local)
 
@@ -918,7 +918,7 @@ For local simulation, using `--source <identity>` where the identity matches the
 
 | Role | Address | Capabilities |
 |---|---|---|
-| **Admin** | `LIQUIFACT_ADMIN_ADDRESS` | `init`, legal hold, maturity update, admin transfer, attestation binding |
+| **Admin** | `STARFUND_ADMIN_ADDRESS` | `init`, legal hold, maturity update, admin transfer, attestation binding |
 | **SME** | set at `init` | `settle`, `withdraw`, `record_sme_collateral_commitment` |
 | **Investor** | any funded address | `fund`, `fund_with_commitment`, `claim_investor_payout` |
 | **Treasury** | set at `init` (immutable) | `sweep_terminal_dust` |
@@ -935,7 +935,7 @@ be committed to version control, logged, or shared:
 | Variable | Purpose | Required for |
 |---|---|---|
 | `SOURCE_SECRET` | Deployer / admin Stellar secret key (`S...`) | `stellar contract deploy`, `init`, all admin calls |
-| `LIQUIFACT_ADMIN_ADDRESS` | Initial admin address (`G...`) | `--admin` arg in `init` |
+| `STARFUND_ADMIN_ADDRESS` | Initial admin address (`G...`) | `--admin` arg in `init` |
 
 In production, `admin` should be a multisig or governed contract address, not a single hot key.
 See the repository README for the release runbook.

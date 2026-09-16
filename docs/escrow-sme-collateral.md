@@ -2,7 +2,7 @@
 
 ## Overview
 
-The LiquiFact escrow contract supports **metadata-only** collateral commitment recording.
+The StarFund escrow contract supports **metadata-only** collateral commitment recording.
 No tokens are moved, reserved, or locked by these operations. The stored
 `SmeCollateralCommitment` and emitted collateral events are **not proof of custody**,
 lien, encumbrance, or asset control — they exist solely for indexers and off-chain risk

@@ -7,7 +7,7 @@
 
 ## Overview
 
-The LiquiFact escrow contract provides compliance chain-anchoring capabilities through 32-byte digest attestations (e.g. SHA-256 hashes of off-chain KYC/KYB documents, IPFS CIDs, or legal bundles). Attestations act as tamper-evident metadata pointers anchored to specific ledger sequences.
+The StarFund escrow contract provides compliance chain-anchoring capabilities through 32-byte digest attestations (e.g. SHA-256 hashes of off-chain KYC/KYB documents, IPFS CIDs, or legal bundles). Attestations act as tamper-evident metadata pointers anchored to specific ledger sequences.
 
 This document specifies the core state and behavioral **invariants** governing attestation storage, access control, bounds, revocations, and entrypoint execution. All production contract modifications must preserve these invariants.
 

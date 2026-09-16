@@ -2,7 +2,7 @@
 
 ## Overview
 
-The escrow contract stores a **schema version** constant (`SCHEMA_VERSION`) that is written to storage under `DataKey::Version` during `init`. This version is the single source of truth for upgrade decisions and is exposed via `LiquifactEscrow::get_version`.
+The escrow contract stores a **schema version** constant (`SCHEMA_VERSION`) that is written to storage under `DataKey::Version` during `init`. This version is the single source of truth for upgrade decisions and is exposed via `StarfundEscrow::get_version`.
 
 ### Additive‑only rules (storage‑only upgrades)
 - **Never rename or delete** an existing `DataKey` variant.
@@ -10,7 +10,7 @@ The escrow contract stores a **schema version** constant (`SCHEMA_VERSION`) that
 - Adding new `DataKey` variants or new contract‑type structs is safe **if** they are read with `.get(...).unwrap_or(default)` so older deployments treat missing keys as unset.
 - Changing the layout or XDR shape of an existing stored type (e.g., adding a required field to `InvoiceEscrow`) **requires** either a migration path in `migrate` **or** a full redeploy.
 
-### Migration flow (`LiquifactEscrow::migrate`)
+### Migration flow (`StarfundEscrow::migrate`)
 The `migrate(from_version)` entrypoint validates the stored version and returns typed errors:
 | Condition | Typed error (code) |
 |-----------|-------------------|

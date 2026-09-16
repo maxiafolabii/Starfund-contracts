@@ -1,6 +1,6 @@
 # SME Beneficiary Model and Invariants
 
-This document describes the design, storage layout, behavioral invariants, and entrypoint interaction model of the SME beneficiary in the LiquiFact escrow contract.
+This document describes the design, storage layout, behavioral invariants, and entrypoint interaction model of the SME beneficiary in the StarFund escrow contract.
 
 ## Data Model & Storage
 

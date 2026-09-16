@@ -1,7 +1,7 @@
 # Allowlist Model and Invariants
 
 > **Audience.** Auditors, integrators, and core contributors who need a
-> spec-style description of the investor allowlist in the LiquiFact escrow
+> spec-style description of the investor allowlist in the StarFund escrow
 > contract (`escrow/src/lib.rs`). This document states the **data model**,
 > **invariants**, **entrypoint contracts**, and a single **worked example**
 > end-to-end. For day-to-day operations, see the companion guide

@@ -1,7 +1,7 @@
 # Allowlist Error Codes — SDK Integration Guide
 
 This document supplements [`docs/allowlist-errors.md`](allowlist-errors.md) with concrete
-typed-error handling patterns for every SDK that consumes Liquifact Escrow contract calls.
+typed-error handling patterns for every SDK that consumes Starfund Escrow contract calls.
 
 All codes are **stable and append-only** — never branch on panic-string text; always branch
 on the numeric `ContractError(code)` value.
@@ -95,7 +95,7 @@ def fund_escrow(client, investor: str, amount: int) -> dict:
 
 ```rust
 use soroban_sdk::{Error, InvokeError};
-use liquifact_escrow::EscrowError;
+use starfund_escrow::EscrowError;
 
 /// Assert that a `try_*` call returns the expected contract error code.
 fn assert_allowlist_error<T, E: std::fmt::Debug>(
@@ -140,7 +140,7 @@ fn batch_empty_returns_code_70() {
 
 #[test]
 fn batch_too_large_returns_code_71() {
-    use liquifact_escrow::MAX_INVESTOR_ALLOWLIST_BATCH;
+    use starfund_escrow::MAX_INVESTOR_ALLOWLIST_BATCH;
     let env = Env::default();
     env.mock_all_auths();
     let client = deploy_and_init(&env);

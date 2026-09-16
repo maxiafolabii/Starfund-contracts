@@ -6,7 +6,7 @@ rejection** — for auditors, integrators, and reviewers. Verified directly agai
 
 > **Scope:** "fees" in this contract means exactly one thing — the immutable
 > `protocol_fee_bps` split applied to the SME's principal at
-> [`LiquifactEscrow::withdraw`]. There is currently **no entrypoint that changes
+> [`StarfundEscrow::withdraw`]. There is currently **no entrypoint that changes
 > `protocol_fee_bps` after `init`** — see [No update path](#no-update-path-by-design) below.
 
 ---

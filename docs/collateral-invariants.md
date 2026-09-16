@@ -1,6 +1,6 @@
 # Collateral Invariants
 
-This document enumerates the invariants that must always hold for the **SME collateral commitment** metadata in the LiquiFact escrow contract.
+This document enumerates the invariants that must always hold for the **SME collateral commitment** metadata in the StarFund escrow contract.
 
 ---
 

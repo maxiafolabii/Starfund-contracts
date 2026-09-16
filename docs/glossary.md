@@ -1,4 +1,4 @@
-# LiquiFact Escrow — Glossary
+# StarFund Escrow — Glossary
 
 Cross-team reference (legal, product, engineering) for terms used in the
 on-chain contract, off-chain indexers, and user-facing copy.
@@ -58,7 +58,7 @@ deploy.
 ## Core terms
 
 ### Invoice escrow
-A single deployed instance of the `LiquifactEscrow` contract that holds
+A single deployed instance of the `StarfundEscrow` contract that holds
 investor funds for one tokenised invoice until settlement. Each instance binds
 exactly one funding token, one SME, one treasury, and one admin.
 

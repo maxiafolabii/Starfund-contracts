@@ -1,6 +1,6 @@
 # Beneficiary Rotation (SME) — dual authorization & downstream routing
 
-The LiquiFact escrow contract supports a governed on-chain rotation of the **SME beneficiary** (the address that receives the escrow’s funded principal on `withdraw`).
+The StarFund escrow contract supports a governed on-chain rotation of the **SME beneficiary** (the address that receives the escrow’s funded principal on `withdraw`).
 
 This document is the authoritative, code-accurate reference for the `rotate_beneficiary` flow, including its **dual-authorization requirement**, its **exact guard ordering**, and its **operator-facing rejection codes**.
 

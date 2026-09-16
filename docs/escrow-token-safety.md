@@ -7,7 +7,7 @@
 
 ## Overview
 
-The LiquiFact escrow contract enforces strict token-safety invariants when transferring the funding token. This document describes the wrapper function, the threat model it mitigates, and its limitations.
+The StarFund escrow contract enforces strict token-safety invariants when transferring the funding token. This document describes the wrapper function, the threat model it mitigates, and its limitations.
 
 ## The `transfer_funding_token_with_balance_checks` Wrapper
 

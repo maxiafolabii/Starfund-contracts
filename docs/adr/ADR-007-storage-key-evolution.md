@@ -64,7 +64,7 @@ independent TTL and the contract instance entry does not grow with investor card
 
 Read/write semantics are unchanged: absent keys still default to `0`, base `yield_bps`, `0`, and
 `false` respectively. Per-investor persistent keys have their TTL extended at write time using `PERSISTENT_TTL_MIN_EXTENSION_LEDGERS`. See `docs/escrow-gas-storage-notes.md` for additional TTL extension via
-[`LiquifactEscrow::bump_ttl`](../../escrow/src/lib.rs).
+[`StarfundEscrow::bump_ttl`](../../escrow/src/lib.rs).
 
 **Migration:** relocating storage type is not enumerable on-chain (no iteration over instance keys
 by address). `migrate` returns [`EscrowError::NoMigrationPath`]; operators must **redeploy** fresh

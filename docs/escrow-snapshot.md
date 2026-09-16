@@ -1,6 +1,6 @@
 # Funding Close Snapshot
 
-The `FundingCloseSnapshot` is a critical piece of the LiquiFact Escrow contract's audit trail. It captures the exact state of the escrow at the moment it transitions from `Open` (0) to `Funded` (1).
+The `FundingCloseSnapshot` is a critical piece of the StarFund Escrow contract's audit trail. It captures the exact state of the escrow at the moment it transitions from `Open` (0) to `Funded` (1).
 
 ## Purpose
 

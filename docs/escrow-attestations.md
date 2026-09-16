@@ -1,6 +1,6 @@
 # Escrow Attestations: KYC/KYB Operational Flows
 
-This document describes how the attestation entrypoints on the LiquiFact escrow contract
+This document describes how the attestation entrypoints on the StarFund escrow contract
 are used in KYC (Know Your Customer) and KYB (Know Your Business) compliance workflows.
 
 See [`docs/attestation-invariants.md`](attestation-invariants.md) for the formal invariants and enforcement rules.

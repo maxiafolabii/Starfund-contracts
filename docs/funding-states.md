@@ -1,6 +1,6 @@
 # Funding State Machine
 
-This document describes the state machine governing investor funding in the Liquifact escrow contract. It covers the five status values (`0`–`4`), their allowed transitions, the entrypoints that enforce each transition, and the typed errors raised for invalid operations.
+This document describes the state machine governing investor funding in the Starfund escrow contract. It covers the five status values (`0`–`4`), their allowed transitions, the entrypoints that enforce each transition, and the typed errors raised for invalid operations.
 
 ---
 

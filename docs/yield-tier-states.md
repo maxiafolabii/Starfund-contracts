@@ -2,7 +2,7 @@
 
 ## Overview
 
-The LiquiFact escrow contract supports an optional **Yield-Tier and Commitment Lock** mechanism ([ADR-005](adr/ADR-005-tiered-yield.md)). This feature permits investors to lock their capital for a minimum duration (`min_lock_secs`) in exchange for a higher annual yield (`yield_bps`).
+The StarFund escrow contract supports an optional **Yield-Tier and Commitment Lock** mechanism ([ADR-005](adr/ADR-005-tiered-yield.md)). This feature permits investors to lock their capital for a minimum duration (`min_lock_secs`) in exchange for a higher annual yield (`yield_bps`).
 
 This document details the state machine governing yield-tier table initialization, per-investor tier selection, state transitions, entrypoint enforcement, and typed failure rejections.
 

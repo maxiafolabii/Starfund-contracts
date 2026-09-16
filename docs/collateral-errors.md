@@ -1,6 +1,6 @@
-# Liquifact Escrow Collateral Error Codes
+# Starfund Escrow Collateral Error Codes
 
-This document details the typed Soroban contract errors associated with the **SME Collateral Commitment** feature in the `Liquifact` escrow contract. Client SDKs and integration libraries can use these codes to branch programmatically on specific failure states.
+This document details the typed Soroban contract errors associated with the **SME Collateral Commitment** feature in the `Starfund` escrow contract. Client SDKs and integration libraries can use these codes to branch programmatically on specific failure states.
 
 For a complete list of all escrow error codes, see [`docs/escrow-error-messages.md`](escrow-error-messages.md). For details on how the collateral system operates, see [`docs/escrow-sme-collateral.md`](escrow-sme-collateral.md).
 

@@ -1,6 +1,6 @@
 # Beneficiary Authorization and Access Rules
 
-This document describes the authorization rules governing the **SME beneficiary** (`sme_address`) in the LiquiFact escrow contract: which roles exist, which entrypoints each role may call, in which contract states, and what rejection codes result from violations.
+This document describes the authorization rules governing the **SME beneficiary** (`sme_address`) in the StarFund escrow contract: which roles exist, which entrypoints each role may call, in which contract states, and what rejection codes result from violations.
 
 ---
 

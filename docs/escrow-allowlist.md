@@ -2,7 +2,7 @@
 
 ## Overview
 
-The LiquiFact escrow contract provides an optional investor allowlist gate that controls which addresses may fund an invoice escrow. The allowlist consists of two independent components:
+The StarFund escrow contract provides an optional investor allowlist gate that controls which addresses may fund an invoice escrow. The allowlist consists of two independent components:
 
 1. **Toggle state** (`DataKey::AllowlistActive`) — stored in instance storage, controls whether the gate is enforced
 2. **Per-address entries** (`DataKey::InvestorAllowlisted(Address)`) — stored in persistent storage, indicates whether a specific address is allowlisted
@@ -18,7 +18,7 @@ The allowlist toggle state is stored in **instance storage** under `DataKey::All
 - **Type:** `bool`
 - **Location:** Instance storage (shared TTL with the contract instance)
 - **Default:** `false` (disabled) when absent
-- **Mutability:** Admin-only via [`LiquifactEscrow::set_allowlist_active`]
+- **Mutability:** Admin-only via [`StarfundEscrow::set_allowlist_active`]
 
 Instance storage is loaded in full on every contract invocation and has a shared TTL with the contract instance. The toggle state is small (1 byte) and does not significantly impact instance storage footprint.
 
@@ -29,7 +29,7 @@ Per-address allowlist entries are stored in **persistent storage** under `DataKe
 - **Type:** `bool`
 - **Location:** Persistent storage (independent per-address TTL)
 - **Default:** `false` when absent (default-to-deny semantics)
-- **Mutability:** Admin-only via [`LiquifactEscrow::set_investor_allowlisted`] or [`LiquifactEscrow::set_investors_allowlisted`]
+- **Mutability:** Admin-only via [`StarfundEscrow::set_investor_allowlisted`] or [`StarfundEscrow::set_investors_allowlisted`]
 
 Persistent storage entries have independent TTLs per address and are not loaded on every contract invocation. This design allows the allowlist to scale to many investors without growing the instance storage footprint.
 
@@ -114,7 +114,7 @@ The toggle can be changed at any time (including while the escrow is open for fu
 
 ### Batch Bound
 
-The batch operation [`LiquifactEscrow::set_investors_allowlisted`] is bounded by [`MAX_INVESTOR_ALLOWLIST_BATCH`] (32 entries) to keep storage and CPU work per call bounded. This prevents:
+The batch operation [`StarfundEscrow::set_investors_allowlisted`] is bounded by [`MAX_INVESTOR_ALLOWLIST_BATCH`] (32 entries) to keep storage and CPU work per call bounded. This prevents:
 
 - Excessive storage writes in a single transaction
 - Event emission spam (one event per address)
@@ -122,7 +122,7 @@ The batch operation [`LiquifactEscrow::set_investors_allowlisted`] is bounded by
 
 ### Equivalence to Single Calls
 
-The batch operation is **semantically equivalent” to calling [`LiquifactEscrow::set_investor_allowlisted`] individually for each address in the batch:
+The batch operation is **semantically equivalent” to calling [`StarfundEscrow::set_investor_allowlisted`] individually for each address in the batch:
 
 - Each address receives its own persistent storage write
 - Each address receives its own TTL bump
@@ -261,7 +261,7 @@ Toggle and revocation tests:
 Run tests with:
 
 ```bash
-cargo test -p liquifact_escrow test_allowlist
+cargo test -p starfund_escrow test_allowlist
 ```
 
 ## Related Documentation

@@ -1,6 +1,6 @@
 # Escrow Read API
 
-Complete catalog of all public read-only views on `LiquifactEscrow`. All functions are pure reads:
+Complete catalog of all public read-only views on `StarfundEscrow`. All functions are pure reads:
 no state mutation, no authorization required unless specified otherwise.
 
 **Integrator note:** Return types, defaults, and absent-key behavior documented for each view match
@@ -634,9 +634,9 @@ Returns the effective annualized yield in basis points locked in at the investor
 
 **Storage key:** `DataKey::DistributedPrincipal`
 
-Returns the total principal already returned to investors via [`LiquifactEscrow::refund`].
+Returns the total principal already returned to investors via [`StarfundEscrow::refund`].
 
-- Used by [`LiquifactEscrow::sweep_terminal_dust`] to compute outstanding liabilities.
+- Used by [`StarfundEscrow::sweep_terminal_dust`] to compute outstanding liabilities.
 - Absent ⇒ `0` (no refunds have occurred).
 
 ---
@@ -666,8 +666,8 @@ excess_balance = balance - outstanding_liability  // tokens available for sweep
 // balance == distributed_principal == funded_amount  (or less if partial sweep occurred)
 ```
 
-This view surfaces the balance already consulted internally by [`LiquifactEscrow::sweep_terminal_dust`]
-and [`LiquifactEscrow::withdraw`] for liability-floor enforcement.
+This view surfaces the balance already consulted internally by [`StarfundEscrow::sweep_terminal_dust`]
+and [`StarfundEscrow::withdraw`] for liability-floor enforcement.
 
 ---
 
@@ -687,7 +687,7 @@ surplus               = token_balance - outstanding_liability
 ```
 
 `outstanding_liability` uses the **identical floor** that
-[`LiquifactEscrow::sweep_terminal_dust`] enforces, so the view and the sweep guard
+[`StarfundEscrow::sweep_terminal_dust`] enforces, so the view and the sweep guard
 can never disagree. `surplus` is the sweepable dust when positive and a deficit
 when negative.
 

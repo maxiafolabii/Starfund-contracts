@@ -4,7 +4,7 @@
 **Contract Version:** Schema 6  
 **Last Updated:** 2026-07-27
 
-This document catalogs all typed [`EscrowError`](../escrow/src/lib.rs) codes emitted by funding-related entrypoints in the LiquiFact escrow contract. Integration clients must branch on these numeric codes (not panic strings) for robust error handling.
+This document catalogs all typed [`EscrowError`](../escrow/src/lib.rs) codes emitted by funding-related entrypoints in the StarFund escrow contract. Integration clients must branch on these numeric codes (not panic strings) for robust error handling.
 
 ---
 
@@ -574,5 +574,5 @@ Query state before funding to catch issues client-side.
 
 ---
 
-**Document maintained by:** LiquiFact Core Contributors  
+**Document maintained by:** StarFund Core Contributors  
 **Community:** https://discord.gg/JrGPH4V3
