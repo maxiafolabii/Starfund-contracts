@@ -108,7 +108,7 @@ pub(crate) fn callback_context(nonce: u64) -> DataKey {
     DataKey::CallbackContext(nonce)
 }
 
-/// Instance-storage running total of principal released to the SME via [`LiquifactEscrow::release`].
+/// Instance-storage running total of principal released to the SME via [`StarfundEscrow::release`].
 pub(crate) fn released_amount() -> DataKey {
     DataKey::ReleasedAmount
 }
