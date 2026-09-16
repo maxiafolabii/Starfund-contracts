@@ -8623,8 +8623,6 @@ pub struct ReconciliationView {
 
 // Test module tree: submodules are reconciled with the current lib API and
 // must stay green under `cargo test`.
-// #[cfg(test)]
-// mod test_allowlist_tests;
 
 #[cfg(test)]
 mod tests;
