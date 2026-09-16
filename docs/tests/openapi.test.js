@@ -1,5 +1,5 @@
 /**
- * OpenAPI schema conformance tests for LiquiFact API.
+ * OpenAPI schema conformance tests for StarFund API.
  *
  * Validates that request/response payloads conform to the schemas defined in
  * docs/openapi.yaml using AJV (JSON Schema draft-07 / OpenAPI 3.1 subset).
@@ -325,20 +325,20 @@ describe("ApiInfoResponse schema", () => {
   const ref = "#/components/schemas/ApiInfoResponse";
 
   it("accepts a valid info response", () => {
-    assertValid(ref, { name: "LiquiFact API", version: "1.0.0", network: "mainnet" });
+    assertValid(ref, { name: "StarFund API", version: "1.0.0", network: "mainnet" });
   });
 
   it("accepts optional docs_url", () => {
     assertValid(ref, {
-      name: "LiquiFact API",
+      name: "StarFund API",
       version: "1.0.0",
       network: "testnet",
-      docs_url: "https://docs.liquifact.io",
+      docs_url: "https://docs.starfund.io",
     });
   });
 
   it("rejects unknown network value", () => {
-    assertInvalid(ref, { name: "LiquiFact API", version: "1.0.0", network: "devnet" });
+    assertInvalid(ref, { name: "StarFund API", version: "1.0.0", network: "devnet" });
   });
 
   it("rejects missing name", () => {

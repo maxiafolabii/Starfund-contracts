@@ -1,19 +1,19 @@
 openapi: "3.1.0"
 
 info:
-  title: LiquiFact API
+  title: StarFund API
   version: "1.0.0"
   description: |
-    REST API for the LiquiFact global invoice liquidity network on Stellar.
+    REST API for the StarFund global invoice liquidity network on Stellar.
     Exposes health, API info, invoice management, and escrow lifecycle endpoints.
     All monetary amounts are in the smallest unit (stroops: 1 XLM = 10,000,000 stroops).
   contact:
-    name: LiquiFact
+    name: StarFund
   license:
     name: MIT
 
 servers:
-  - url: https://api.liquifact.io/v1
+  - url: https://api.starfund.io/v1
     description: Production
   - url: http://localhost:4000/v1
     description: Local development
@@ -207,7 +207,7 @@ components:
       properties:
         name:
           type: string
-          example: LiquiFact API
+          example: StarFund API
         version:
           type: string
           example: "1.0.0"
@@ -218,7 +218,7 @@ components:
         docs_url:
           type: string
           format: uri
-          example: "https://docs.liquifact.io"
+          example: "https://docs.starfund.io"
 
     ErrorResponse:
       type: object
@@ -319,10 +319,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiInfoResponse"
               example:
-                name: LiquiFact API
+                name: StarFund API
                 version: "1.0.0"
                 network: mainnet
-                docs_url: "https://docs.liquifact.io"
+                docs_url: "https://docs.starfund.io"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -411,7 +411,7 @@ paths:
       operationId: initEscrow
       summary: Initialise invoice escrow
       description: |
-        Creates a new on-chain escrow for an invoice via the `LiquifactEscrow.init` contract call.
+        Creates a new on-chain escrow for an invoice via the `StarfundEscrow.init` contract call.
         The caller must be authenticated and authorised to act on behalf of the SME.
       tags: [Escrow]
       requestBody:
@@ -446,7 +446,7 @@ paths:
       operationId: fundEscrow
       summary: Fund an escrow
       description: |
-        Records an investor contribution via `LiquifactEscrow.fund`.
+        Records an investor contribution via `StarfundEscrow.fund`.
         Status transitions to `1` (funded) when `funded_amount >= funding_target`.
       tags: [Escrow]
       parameters:
@@ -492,7 +492,7 @@ paths:
       operationId: confirmPayment
       summary: Confirm buyer payment
       description: |
-        Records the buyer's explicit confirmation of payment via `LiquifactEscrow.confirm_payment`.
+        Records the buyer's explicit confirmation of payment via `StarfundEscrow.confirm_payment`.
         Required before the SME can settle the escrow.
       tags: [Escrow]
       parameters:
@@ -529,7 +529,7 @@ paths:
       operationId: settleEscrow
       summary: Settle an escrow
       description: |
-        Marks the escrow as settled via `LiquifactEscrow.settle`.
+        Marks the escrow as settled via `StarfundEscrow.settle`.
         Requires status `1` (funded) AND explicit buyer confirmation (`is_paid` = true).
         Transitions to status `2` (settled), releasing principal + yield to investors.
       tags: [Escrow]

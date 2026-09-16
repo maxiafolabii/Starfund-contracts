@@ -1,7 +1,7 @@
 {
-  "name": "liquifact-openapi-tests",
+  "name": "starfund-openapi-tests",
   "version": "1.0.0",
-  "description": "OpenAPI schema conformance tests for LiquiFact API",
+  "description": "OpenAPI schema conformance tests for StarFund API",
   "private": true,
   "scripts": {
     "test": "node --test tests/openapi.test.js"

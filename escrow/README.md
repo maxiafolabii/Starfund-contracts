@@ -1,4 +1,4 @@
-# LiquiFact Escrow (`liquifact_escrow`)
+# StarFund Escrow (`starfund_escrow`)
 
 Soroban escrow for invoice funding, settlement, and investor claims. This README adds **formal invariant stubs** (machine-readable IDs plus math-style properties), **test traceability**, **attestation hashing**, **minimum contribution floors**, and **unique investor caps** (issues #102–#105).
 
@@ -280,7 +280,7 @@ cargo build --target wasm32v1-none --release
 cargo build --target wasm32v1-none
 
 # Artifact location:
-# target/wasm32v1-none/release/liquifact_escrow.wasm
+# target/wasm32v1-none/release/starfund_escrow.wasm
 ```
 
 #### Standard Rust Build
@@ -292,7 +292,7 @@ cargo build
 cargo build --release
 
 # Build specific package
-cargo build -p liquifact_escrow
+cargo build -p starfund_escrow
 ```
 
 ### Test Commands
@@ -303,31 +303,31 @@ cargo build -p liquifact_escrow
 cargo test
 
 # Run escrow package tests specifically
-cargo test -p liquifact_escrow
+cargo test -p starfund_escrow
 
 # Run tests with output
-cargo test -p liquifact_escrow -- --nocapture
+cargo test -p starfund_escrow -- --nocapture
 
 # Run specific test module
-cargo test -p liquifact_escrow test::init
+cargo test -p starfund_escrow test::init
 ```
 
 #### Run Tests by Feature Area
 ```bash
 # Initialization tests
-cargo test -p liquifact_escrow test::init::*
+cargo test -p starfund_escrow test::init::*
 
 # Funding tests  
-cargo test -p liquifact_escrow test::funding::*
+cargo test -p starfund_escrow test::funding::*
 
 # Settlement tests
-cargo test -p liquifact_escrow test::settlement::*
+cargo test -p starfund_escrow test::settlement::*
 
 # Admin tests
-cargo test -p liquifact_escrow test::admin::*
+cargo test -p starfund_escrow test::admin::*
 
 # Property-based tests
-cargo test -p liquifact_escrow test::properties::*
+cargo test -p starfund_escrow test::properties::*
 ```
 
 ### Coverage Commands
@@ -335,24 +335,24 @@ cargo test -p liquifact_escrow test::properties::*
 #### Generate Coverage Report
 ```bash
 # Full coverage with HTML report
-cargo llvm-cov --features testutils --summary-only -p liquifact_escrow
+cargo llvm-cov --features testutils --summary-only -p starfund_escrow
 
 # Coverage with minimum 95% threshold (CI standard)
-cargo llvm-cov --features testutils --fail-under-lines 95 --summary-only -p liquifact_escrow
+cargo llvm-cov --features testutils --fail-under-lines 95 --summary-only -p starfund_escrow
 
 # Detailed HTML coverage report
-cargo llvm-cov --features testutils --html -p liquifact_escrow
+cargo llvm-cov --features testutils --html -p starfund_escrow
 
 # Open HTML report in browser (after html command)
-open target/llvm-cov/html/liquifact_escrow/index.html
+open target/llvm-cov/html/starfund_escrow/index.html
 ```
 
 #### Coverage by Test Module
 ```bash
 # Coverage for specific test areas
-cargo llvm-cov --features testutils --test test::init -p liquifact_escrow
-cargo llvm-cov --features testutils --test test::funding -p liquifact_escrow
-cargo llvm-cov --features testutils --test test::settlement -p liquifact_escrow
+cargo llvm-cov --features testutils --test test::init -p starfund_escrow
+cargo llvm-cov --features testutils --test test::funding -p starfund_escrow
+cargo llvm-cov --features testutils --test test::settlement -p starfund_escrow
 ```
 
 ### Test Snapshots
@@ -360,10 +360,10 @@ cargo llvm-cov --features testutils --test test::settlement -p liquifact_escrow
 #### Update Test Snapshots
 ```bash
 # Update proptest regressions (if using proptest)
-cargo test -p liquifact_escrow --features testutils -- --reset
+cargo test -p starfund_escrow --features testutils -- --reset
 
 # Re-run specific failing tests to update snapshots
-cargo test -p liquifact_escrow test::prop_funded_amount_non_decreasing -- --exact
+cargo test -p starfund_escrow test::prop_funded_amount_non_decreasing -- --exact
 ```
 
 ### Code Quality Commands
@@ -377,7 +377,7 @@ cargo fmt --all
 cargo fmt --all -- --check
 
 # Run clippy linting
-cargo clippy -p liquifact_escrow -- -D warnings
+cargo clippy -p starfund_escrow -- -D warnings
 
 # Run clippy on entire workspace
 cargo clippy --all-targets -- -D warnings
@@ -403,7 +403,7 @@ export SOURCE_SECRET="S..."
 ```bash
 # Deploy contract (requires Soroban CLI)
 soroban contract deploy \
-  --wasm target/wasm32v1-none/release/liquifact_escrow.wasm \
+  --wasm target/wasm32v1-none/release/starfund_escrow.wasm \
   --source $SOURCE_SECRET \
   --network $STELLAR_NETWORK
 
@@ -423,7 +423,7 @@ soroban contract invoke \
 docker run -d -p 8000:8000 stellar/quickstart:latest
 
 # Or use standalone mode for testing
-cargo test -p liquifact_escrow --features testutils
+cargo test -p starfund_escrow --features testutils
 ```
 
 ### Development Workflow
@@ -432,14 +432,14 @@ cargo test -p liquifact_escrow --features testutils
 ```bash
 # 1. Format and lint code
 cargo fmt --all -- --check
-cargo clippy -p liquifact_escrow -- -D warnings
+cargo clippy -p starfund_escrow -- -D warnings
 
 # 2. Build and run tests
 cargo build
-cargo test -p liquifact_escrow
+cargo test -p starfund_escrow
 
 # 3. Check coverage
-cargo llvm-cov --features testutils --fail-under-lines 95 --summary-only -p liquifact_escrow
+cargo llvm-cov --features testutils --fail-under-lines 95 --summary-only -p starfund_escrow
 
 # 4. Build WASM for deployment
 cargo build --target wasm32v1-none --release
@@ -448,7 +448,7 @@ cargo build --target wasm32v1-none --release
 #### Quick Test Cycle
 ```bash
 # Fast iteration: format, build, test
-cargo fmt --all && cargo build && cargo test -p liquifact_escrow
+cargo fmt --all && cargo build && cargo test -p starfund_escrow
 ```
 
 ### Troubleshooting
@@ -459,7 +459,7 @@ cargo fmt --all && cargo build && cargo test -p liquifact_escrow
 rustup target add wasm32v1-none
 
 # If tests fail with "testutils" feature missing
-cargo test -p liquifact_escrow --features testutils
+cargo test -p starfund_escrow --features testutils
 
 # If coverage tool not found
 cargo install cargo-llvm-cov
@@ -471,13 +471,13 @@ cargo install soroban-cli
 #### Performance Tips
 ```bash
 # Run tests in parallel (default)
-cargo test -p liquifact_escrow --release
+cargo test -p starfund_escrow --release
 
 # Run single-threaded for debugging
-cargo test -p liquifact_escrow -- --test-threads=1
+cargo test -p starfund_escrow -- --test-threads=1
 
 # Skip slow tests during development
-cargo test -p liquifact_escrow -- --skip slow_test
+cargo test -p starfund_escrow -- --skip slow_test
 ```
 
 ### Security Assumptions (Token Economics)
@@ -543,10 +543,10 @@ Run these locally before pushing:
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p liquifact_escrow -- -D warnings
-cargo build --target wasm32v1-none --release -p liquifact_escrow
-cargo test -p liquifact_escrow
-cargo llvm-cov --features testutils --fail-under-lines 95 --summary-only -p liquifact_escrow
+cargo clippy -p starfund_escrow -- -D warnings
+cargo build --target wasm32v1-none --release -p starfund_escrow
+cargo test -p starfund_escrow
+cargo llvm-cov --features testutils --fail-under-lines 95 --summary-only -p starfund_escrow
 ```
 
 ## Security review sign-off checklist (pre-deploy)
