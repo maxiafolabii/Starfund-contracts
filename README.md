@@ -1,6 +1,6 @@
-# LiquiFact Escrow Contracts
+# StarFund Escrow Contracts
 
-Soroban smart contracts for LiquiFact, the invoice liquidity network on Stellar.
+Soroban smart contracts for StarFund, the invoice liquidity network on Stellar.
 This repository contains the `escrow` contract that holds investor funds for
 tokenized invoices until settlement.
 
@@ -66,7 +66,7 @@ WASM.
 
 ### `migrate` entrypoint — typed error semantics
 
-`LiquifactEscrow::migrate(from_version)` emits typed [`EscrowError`](docs/escrow-error-messages.md)
+`StarfundEscrow::migrate(from_version)` emits typed [`EscrowError`](docs/escrow-error-messages.md)
 codes in all current cases. There is **no silent migration path** from any prior version to
 version 6. Callers must not assume it will do bookkeeping work:
 
@@ -105,7 +105,7 @@ redeploy-vs-upgrade decision tree and Stellar/Soroban CLI examples.
 
 ## Release runbook: build, deploy, verify
 
-**Who may deploy production:** only addresses and keys owned by LiquiFact
+**Who may deploy production:** only addresses and keys owned by StarFund
 governance (multisig / custody). Treat contract admin and deployer secrets as
 **highly sensitive**.
 
@@ -120,7 +120,7 @@ coordination.
 | `STELLAR_NETWORK` | e.g. `testnet` / `mainnet` / custom network passphrase |
 | `SOROBAN_RPC_URL` | Soroban RPC endpoint |
 | `SOURCE_SECRET` | Funding / deployer Stellar secret key (`S...`) |
-| `LIQUIFACT_ADMIN_ADDRESS` | Initial admin intended to control holds and funding target |
+| `STARFUND_ADMIN_ADDRESS` | Initial admin intended to control holds and funding target |
 
 Exact CLI flags change between Soroban releases; always cross-check the
 [Stellar Soroban docs](https://developers.stellar.org/docs/tools/soroban-cli/stellar-cli)
@@ -130,18 +130,18 @@ for your installed `stellar` CLI version.
 
 ```bash
 rustup target add wasm32v1-none
-cargo build --target wasm32v1-none --release -p liquifact_escrow
+cargo build --target wasm32v1-none --release -p starfund_escrow
 # Artifact (typical):
-# target/wasm32v1-none/release/liquifact_escrow.wasm
+# target/wasm32v1-none/release/starfund_escrow.wasm
 ```
-liquifact-contracts/
+starfund-contracts/
 ├── Cargo.toml           # Workspace definition
 ├── docs/
 │   └── escrow-sme-collateral.md  # Collateral flow spec
 ├── escrow/
 │   ├── Cargo.toml       # Escrow contract crate
 │   └── src/
-│       ├── lib.rs       # LiquiFact escrow contract
+│       ├── lib.rs       # StarFund escrow contract
 │       ├── test.rs      # Legacy unit tests
 │       └── tests/
 │           ├── mod.rs
@@ -349,7 +349,7 @@ The escrow supports cancellation by the admin under specific criteria, unlocking
   compliance semantics and no clear delay. It carries a typed [`PauseScope`] (which
   flows are blocked: `Funding`/`Settlement`/`Withdrawal`/`Claims`/`All`) and a typed
   [`PauseReason`]; gates are scope-aware so a single-scope pause only blocks that
-  family. Safe read-only [`LiquifactEscrow::get_pause_state`] exposes `(scope,
+  family. Safe read-only [`StarfundEscrow::get_pause_state`] exposes `(scope,
   reason)` without auth. A wrong-scope unpause fails with `PauseScopeMismatch` (246);
   gates fire as a read-only precondition before `require_auth` (typed errors 210–213).
   Either flag blocks independently; clearing one never clears the other.
@@ -409,10 +409,10 @@ Run these before opening a PR:
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p liquifact_escrow -- -D warnings
+cargo clippy -p starfund_escrow -- -D warnings
 cargo build
 cargo test
-cargo llvm-cov --features testutils --fail-under-lines 95 --summary-only -p liquifact_escrow
+cargo llvm-cov --features testutils --fail-under-lines 95 --summary-only -p starfund_escrow
 ```
 
 ### Cargo.lock process notes

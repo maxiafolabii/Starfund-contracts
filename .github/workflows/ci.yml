@@ -22,10 +22,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Check formatting
-        run: cargo fmt -p liquifact_escrow -- --check
+        run: cargo fmt -p starfund_escrow -- --check
 
       - name: Clippy
-        run: cargo clippy -p liquifact_escrow -- -D warnings
+        run: cargo clippy -p starfund_escrow -- -D warnings
 
       - name: Build
         run: cargo build
@@ -39,12 +39,12 @@ jobs:
       - name: Add WASM target
         run: rustup target add wasm32v1-none
       - name: Build WASM
-        run: cargo build --target wasm32v1-none --release -p liquifact_escrow
+        run: cargo build --target wasm32v1-none --release -p starfund_escrow
 
       - name: Workspace Clippy (all targets)
         # Latent clippy denies in tests; keep signal without hard-failing CI.
         continue-on-error: true
-        run: cargo clippy -p liquifact_escrow --all-targets
+        run: cargo clippy -p starfund_escrow --all-targets
 
       - name: Check coverage (report)
         # Keep the report for reviewers; latent ignores temporarily affect line %.
@@ -53,4 +53,4 @@ jobs:
           cargo llvm-cov \
             --features testutils \
             --summary-only \
-            -p liquifact_escrow
+            -p starfund_escrow
