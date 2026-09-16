@@ -1,8 +1,8 @@
 [package]
-name = "liquifact_escrow"
+name = "starfund_escrow"
 version = "0.1.0"
 edition = "2021"
-description = "LiquiFact invoice escrow contract - holds funds until settlement"
+description = "StarFund invoice escrow contract - holds funds until settlement"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
