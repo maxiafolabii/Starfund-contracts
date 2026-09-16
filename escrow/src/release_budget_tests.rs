@@ -8,9 +8,9 @@
 //!    the full list) plus a **large metadata** record ([`crate::SmeCollateralCommitment`]).
 //! 2. **Measures instruction + memory cost** via
 //!    [`soroban_sdk::testutils::CostEstimate::budget`] (`cpu_instruction_cost()` /
-//!    `memory_bytes_cost()`) across the release path: [`LiquifactEscrow::settle`],
-//!    [`LiquifactEscrow::claim_investor_payout`] (repeated releases), and a single worst-case
-//!    page of [`LiquifactEscrow::get_funding_records`] / [`LiquifactEscrow::get_investors`]
+//!    `memory_bytes_cost()`) across the release path: [`StarfundEscrow::settle`],
+//!    [`StarfundEscrow::claim_investor_payout`] (repeated releases), and a single worst-case
+//!    page of [`StarfundEscrow::get_funding_records`] / [`StarfundEscrow::get_investors`]
 //!    at scale (the participant-count growth path, where each page deserializes the full
 //!    [`crate::DataKey::InvestorIndex`]).
 //! 3. **Enforces the documented budget** — every measured call must stay under
@@ -21,7 +21,7 @@
 //!    the axis that scales release cost (`InvestorIndex` size) finite.
 //!
 //! These tests deliberately do **not** depend on the crate's `tests/` module tree (disabled);
-//! they drive the public [`LiquifactEscrow`] surface directly, mirroring `settlement_guard_tests`.
+//! they drive the public [`StarfundEscrow`] surface directly, mirroring `settlement_guard_tests`.
 //!
 //! Note: native (non-WASM) metering **underestimates** WASM cost, so the ceilings are loose,
 //! conservative documentation gates rather than tight WASM budgets — see the constant docs.
@@ -29,7 +29,7 @@
 use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol, Vec};
 
 use super::{
-    keys, LiquifactEscrow, LiquifactEscrowClient, MAX_INVESTOR_READ_BATCH,
+    keys, StarfundEscrow, StarfundEscrowClient, MAX_INVESTOR_READ_BATCH,
     MAX_UNIQUE_INVESTORS, WORST_CASE_RELEASE_CPU_INSNS_CEILING,
     WORST_CASE_RELEASE_MEM_BYTES_CEILING,
 };
@@ -43,10 +43,10 @@ struct Measured {
 /// Deploy + initialise an escrow with `max_unique_investors` **unset** (so only the hard
 /// [`crate::MAX_UNIQUE_INVESTORS`] ceiling applies) and a large `funding_target` so it stays
 /// **open** (status 0) and accepts many distinct funders. Returns the client and contract id.
-fn deploy(env: &Env, target: i128) -> (LiquifactEscrowClient<'_>, Address) {
+fn deploy(env: &Env, target: i128) -> (StarfundEscrowClient<'_>, Address) {
     env.mock_all_auths_allowing_non_root_auth();
-    let id = env.register(LiquifactEscrow, ());
-    let client = LiquifactEscrowClient::new(env, &id);
+    let id = env.register(StarfundEscrow, ());
+    let client = StarfundEscrowClient::new(env, &id);
     let admin = Address::generate(env);
     let sme = Address::generate(env);
     let token = Address::generate(env);
@@ -76,7 +76,7 @@ fn deploy(env: &Env, target: i128) -> (LiquifactEscrowClient<'_>, Address) {
 
 /// Record large SME collateral **metadata** so the metadata-growth axis is exercised.
 /// (Symbol max is 32 bytes; use the full length to represent "large" metadata.)
-fn record_large_metadata(env: &Env, client: &LiquifactEscrowClient<'_>) {
+fn record_large_metadata(env: &Env, client: &StarfundEscrowClient<'_>) {
     let asset = Symbol::new(env, "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456");
     let _ = client.record_sme_collateral_commitment(&asset, &5_000_000i128);
 }
@@ -110,7 +110,7 @@ fn assert_within_budget(what: &str, m: &Measured) {
 /// Edge case — **worst-case fixture**: a large [`crate::DataKey::InvestorIndex`] (representative
 /// participant scale), so every paginated view must deserialize the **full** index per call —
 /// the participant-count growth axis that scales release cost. A single worst-case page of
-/// [`LiquifactEscrow::get_funding_records`] / [`LiquifactEscrow::get_investors`] must stay within
+/// [`StarfundEscrow::get_funding_records`] / [`StarfundEscrow::get_investors`] must stay within
 /// the documented budget.
 ///
 /// The index is populated directly in contract storage (rather than via thousands of funded

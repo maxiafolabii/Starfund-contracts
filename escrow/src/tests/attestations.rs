@@ -42,19 +42,19 @@ fn digest(env: &Env, seed: u8) -> BytesN<32> {
 }
 
 /// Initialize a fresh escrow and return `(client, admin)`.
-fn setup_with_init(env: &Env) -> (LiquifactEscrowClient<'_>, Address) {
+fn setup_with_init(env: &Env) -> (StarfundEscrowClient<'_>, Address) {
     let (client, admin, sme) = setup(env);
     default_init(&client, env, &admin, &sme);
     (client, admin)
 }
 
-fn attestation_log_stats(client: &LiquifactEscrowClient<'_>) -> (u32, u32) {
+fn attestation_log_stats(client: &StarfundEscrowClient<'_>) -> (u32, u32) {
     let used = client.get_attestation_append_log().len();
     (used, MAX_ATTESTATION_APPEND_ENTRIES.saturating_sub(used))
 }
 
 /// The number of free attestation append-log slots remaining.
-fn remaining_attestation_slots(client: &LiquifactEscrowClient<'_>) -> u32 {
+fn remaining_attestation_slots(client: &StarfundEscrowClient<'_>) -> u32 {
     let used = client.get_attestation_append_log().len();
     MAX_ATTESTATION_APPEND_ENTRIES.saturating_sub(used)
 }

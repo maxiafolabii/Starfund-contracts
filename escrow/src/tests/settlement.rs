@@ -1,4 +1,4 @@
-//! Settlement and withdrawal tests for the LiquiFact escrow contract.
+//! Settlement and withdrawal tests for the StarFund escrow contract.
 //!
 //! Covers the full `withdraw` surface (happy path, wrong-status guards, legal-hold
 //! block, idempotency, event emission, and terminal status assertion) as well as
@@ -22,7 +22,7 @@ use super::{
     install_stellar_asset_token, setup, StellarTestToken, MAX_DUST_SWEEP_AMOUNT, TARGET,
 };
 use crate::{
-    EscrowError, EscrowSettled, InvoiceEscrow, LiquifactEscrow, SettlementConfig,
+    EscrowError, EscrowSettled, InvoiceEscrow, StarfundEscrow, SettlementConfig,
     SettlementReadiness, SettlementResult, SmeWithdrew, YieldTier,
 };
 use soroban_sdk::{
@@ -38,7 +38,7 @@ use soroban_sdk::{
 
 /// Bring an escrow to `status == 1` (funded) by depositing exactly `TARGET`
 /// from a single investor, then return the investor address.
-fn fund_to_target(client: &super::LiquifactEscrowClient<'_>, env: &Env) -> Address {
+fn fund_to_target(client: &super::StarfundEscrowClient<'_>, env: &Env) -> Address {
     let investor = Address::generate(env);
     client.fund(&investor, &TARGET);
     investor
@@ -50,7 +50,7 @@ fn setup_claim_env<'a>(
     target: i128,
     yield_bps: i64,
 ) -> (
-    super::LiquifactEscrowClient<'a>,
+    super::StarfundEscrowClient<'a>,
     StellarTestToken<'a>,
     Address,
     Address,
@@ -93,7 +93,7 @@ fn setup_claim_env<'a>(
 fn setup_funded_with_token<'a>(
     env: &'a Env,
 ) -> (
-    super::LiquifactEscrowClient<'a>,
+    super::StarfundEscrowClient<'a>,
     Address,
     StellarAssetClient<'a>,
 ) {
@@ -102,8 +102,8 @@ fn setup_funded_with_token<'a>(
     let token_id = sac.address();
     let sac_admin = StellarAssetClient::new(env, &token_id);
 
-    let escrow_id = env.register(LiquifactEscrow, ());
-    let client = super::LiquifactEscrowClient::new(env, &escrow_id);
+    let escrow_id = env.register(StarfundEscrow, ());
+    let client = super::StarfundEscrowClient::new(env, &escrow_id);
     let admin = Address::generate(env);
     let sme = Address::generate(env);
     let treasury = Address::generate(env);
@@ -141,7 +141,7 @@ fn setup_funded_with_token<'a>(
 }
 
 /// Bring an escrow to `status == 2` (settled) and return the investor address.
-fn settle_escrow(client: &super::LiquifactEscrowClient<'_>, env: &Env) -> Address {
+fn settle_escrow(client: &super::StarfundEscrowClient<'_>, env: &Env) -> Address {
     let investor = fund_to_target(client, env);
     client.settle();
     investor
@@ -2256,7 +2256,7 @@ fn test_settlement_readiness_maturity_gate_parity() {
 /// standalone predicate and that the invariant `ready_now == is_settleable`
 /// holds. Also verifies the struct never reports settleable/ready while a legal
 /// hold is active.
-fn assert_readiness_matches_predicates(env: &Env, client: &super::LiquifactEscrowClient<'_>) {
+fn assert_readiness_matches_predicates(env: &Env, client: &super::StarfundEscrowClient<'_>) {
     let r = client.get_settlement_readiness();
     assert_eq!(
         r.is_settleable,
@@ -3429,7 +3429,7 @@ fn setup_yield_bps_test<'a>(
     env: &'a Env,
     invoice_id: &str,
     yield_bps: i64,
-) -> (super::LiquifactEscrowClient<'a>, Address) {
+) -> (super::StarfundEscrowClient<'a>, Address) {
     env.mock_all_auths();
     let mut li = env.ledger().get();
     li.timestamp = 1_000;

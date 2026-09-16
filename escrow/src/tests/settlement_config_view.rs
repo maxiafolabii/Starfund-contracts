@@ -1,28 +1,28 @@
-//! Tests for [`LiquifactEscrow::get_settlement_config`].
+//! Tests for [`StarfundEscrow::get_settlement_config`].
 //!
 //! Covers:
-//! - Default values before [`LiquifactEscrow::init`] is called.
+//! - Default values before [`StarfundEscrow::init`] is called.
 //! - Values reflect what was passed to `init`.
 //! - Values match the individual getters so the bundled view cannot drift.
 //! - The bundled view is idempotent (pure read).
 //! - The struct shape is pinned via field-by-field destructuring.
 
-use super::super::{LiquifactEscrow, LiquifactEscrowClient, SettlementConfig};
+use super::super::{StarfundEscrow, StarfundEscrowClient, SettlementConfig};
 use crate::DEFAULT_MATURITY_MAX_HORIZON_SECS;
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-fn deploy(env: &Env) -> LiquifactEscrowClient<'_> {
-    let id = env.register(LiquifactEscrow, ());
-    LiquifactEscrowClient::new(env, &id)
+fn deploy(env: &Env) -> StarfundEscrowClient<'_> {
+    let id = env.register(StarfundEscrow, ());
+    StarfundEscrowClient::new(env, &id)
 }
 
 /// Init with caller-supplied `yield_bps`, `maturity`, and `protocol_fee_bps`.
 fn init_escrow(
     env: &Env,
-    client: &LiquifactEscrowClient,
+    client: &StarfundEscrowClient,
     yield_bps: i64,
     maturity: u64,
     protocol_fee_bps: Option<i64>,

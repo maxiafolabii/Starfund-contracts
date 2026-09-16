@@ -19,13 +19,13 @@ fn make_env() -> Env {
 fn setup_open(
     env: &Env,
 ) -> (
-    LiquifactEscrowClient<'_>,
+    StarfundEscrowClient<'_>,
     Address,
     Address,
     Address,
     Address,
 ) {
-    let client = LiquifactEscrowClient::new(env, &env.register(LiquifactEscrow, ()));
+    let client = StarfundEscrowClient::new(env, &env.register(StarfundEscrow, ()));
     let admin = Address::generate(env);
     let sme = Address::generate(env);
     let tok = Address::generate(env);
@@ -56,7 +56,7 @@ fn setup_open(
 }
 
 /// Move the escrow to cancelled status (status == 4).
-fn cancel(client: &LiquifactEscrowClient<'_>, _admin: &Address) {
+fn cancel(client: &StarfundEscrowClient<'_>, _admin: &Address) {
     client.cancel_funding();
 }
 
@@ -117,7 +117,7 @@ fn test_update_funding_target_rejects_when_cancelled() {
 fn test_lower_max_unique_investors_rejects_when_cancelled() {
     let env = make_env();
     // Must configure a max_unique_investors cap at init.
-    let client = LiquifactEscrowClient::new(&env, &env.register(LiquifactEscrow, ()));
+    let client = StarfundEscrowClient::new(&env, &env.register(StarfundEscrow, ()));
     let admin = Address::generate(&env);
     let sme = Address::generate(&env);
     let tok = Address::generate(&env);
@@ -153,7 +153,7 @@ fn test_lower_max_unique_investors_rejects_when_cancelled() {
 fn test_lower_min_contribution_floor_rejects_when_cancelled() {
     let env = make_env();
     // Must configure a min_contribution floor at init.
-    let client = LiquifactEscrowClient::new(&env, &env.register(LiquifactEscrow, ()));
+    let client = StarfundEscrowClient::new(&env, &env.register(StarfundEscrow, ()));
     let admin = Address::generate(&env);
     let sme = Address::generate(&env);
     let tok = Address::generate(&env);
@@ -225,7 +225,7 @@ fn test_update_funding_target_succeeds_when_open() {
 #[test]
 fn test_lower_max_unique_investors_succeeds_when_open() {
     let env = make_env();
-    let client = LiquifactEscrowClient::new(&env, &env.register(LiquifactEscrow, ()));
+    let client = StarfundEscrowClient::new(&env, &env.register(StarfundEscrow, ()));
     let admin = Address::generate(&env);
     let sme = Address::generate(&env);
     let tok = Address::generate(&env);

@@ -1,17 +1,17 @@
 use super::{
-    AllowlistEnabledChanged, DataKey, EscrowError, InvestorAllowlistChanged, LiquifactEscrow,
-    LiquifactEscrowClient,
+    AllowlistEnabledChanged, DataKey, EscrowError, InvestorAllowlistChanged, StarfundEscrow,
+    StarfundEscrowClient,
 };
 use soroban_sdk::Vec as SorobanVec;
 use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env, Error, Event, InvokeError};
 use std::fmt::Debug;
 
-fn deploy(env: &Env) -> LiquifactEscrowClient<'_> {
-    let id = env.register(LiquifactEscrow, ());
-    LiquifactEscrowClient::new(env, &id)
+fn deploy(env: &Env) -> StarfundEscrowClient<'_> {
+    let id = env.register(StarfundEscrow, ());
+    StarfundEscrowClient::new(env, &id)
 }
 
-fn init(env: &Env, client: &LiquifactEscrowClient) -> (Address, Address) {
+fn init(env: &Env, client: &StarfundEscrowClient) -> (Address, Address) {
     let admin = Address::generate(env);
     let sme = Address::generate(env);
     let token = Address::generate(env);
@@ -503,7 +503,7 @@ fn assert_contract_error_gate<T, E>(
 // Helper: initialise an escrow backed by a fresh address-stub token.
 // Returns (admin, sme).  The caller has already called `env.mock_all_auths()`.
 // ---------------------------------------------------------------------------
-fn init_gate(env: &Env, client: &LiquifactEscrowClient) -> (Address, Address) {
+fn init_gate(env: &Env, client: &StarfundEscrowClient) -> (Address, Address) {
     let admin = Address::generate(env);
     let sme = Address::generate(env);
     let token = Address::generate(env);

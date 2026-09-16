@@ -203,7 +203,7 @@ fn test_edge_case_maximum_amount_transfer() {
 
 fn setup_cancelled_with_token<'a>(
     env: &'a Env,
-    client: &LiquifactEscrowClient<'a>,
+    client: &StarfundEscrowClient<'a>,
     admin: &Address,
     sme: &Address,
     investor: &Address,
@@ -483,7 +483,7 @@ fn distributed_principal_accumulates_across_multiple_refunds() {
 
 fn setup_multi_investor_cancelled<'a>(
     env: &'a Env,
-    client: &LiquifactEscrowClient<'a>,
+    client: &StarfundEscrowClient<'a>,
     admin: &Address,
     sme: &Address,
     investors: &[Address],

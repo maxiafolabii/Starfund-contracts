@@ -12,16 +12,16 @@
 
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
-use super::{CallbackContext, LiquifactEscrow, LiquifactEscrowClient};
+use super::{CallbackContext, StarfundEscrow, StarfundEscrowClient};
 
 /// Deploy and initialize an escrow instance for callback testing.
 fn deploy_escrow<'a>(
     env: &'a Env,
     invoice_id: &str,
-) -> (LiquifactEscrowClient<'a>, Address, Address, Address) {
+) -> (StarfundEscrowClient<'a>, Address, Address, Address) {
     env.mock_all_auths_allowing_non_root_auth();
-    let id = env.register(LiquifactEscrow, ());
-    let client = LiquifactEscrowClient::new(env, &id);
+    let id = env.register(StarfundEscrow, ());
+    let client = StarfundEscrowClient::new(env, &id);
     let admin = Address::generate(env);
     let sme = Address::generate(env);
     let token = Address::generate(env);

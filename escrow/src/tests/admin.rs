@@ -2258,7 +2258,7 @@ fn test_update_maturity_edge_cases_success() {
 fn auth_audit_init_funded(
     env: &Env,
 ) -> (
-    LiquifactEscrowClient<'_>,
+    StarfundEscrowClient<'_>,
     Address,
     Address,
     Address,
@@ -2401,7 +2401,7 @@ fn auth_audit_sweep_terminal_dust_requires_treasury() {
     let token = install_stellar_asset_token(&env);
     let treasury = Address::generate(&env);
     let escrow_id = deploy_id(&env);
-    let client = LiquifactEscrowClient::new(&env, &escrow_id);
+    let client = StarfundEscrowClient::new(&env, &escrow_id);
     client.init(
         &admin,
         &soroban_sdk::String::from_str(&env, "AUTHSW"),
@@ -2616,7 +2616,7 @@ fn auth_audit_sweep_terminal_dust_wrong_signer() {
     let token = install_stellar_asset_token(&env);
     let treasury = Address::generate(&env);
     let escrow_id = deploy_id(&env);
-    let client = LiquifactEscrowClient::new(&env, &escrow_id);
+    let client = StarfundEscrowClient::new(&env, &escrow_id);
     client.init(
         &admin,
         &soroban_sdk::String::from_str(&env, "WRSW"),
@@ -2841,7 +2841,7 @@ fn test_rotate_beneficiary_then_withdraw_goes_to_new_sme() {
     let token = install_stellar_asset_token(&env);
     let treasury = Address::generate(&env);
     let escrow_id = deploy_id(&env);
-    let client = LiquifactEscrowClient::new(&env, &escrow_id);
+    let client = StarfundEscrowClient::new(&env, &escrow_id);
     client.init(
         &admin,
         &soroban_sdk::String::from_str(&env, "WDTST"),

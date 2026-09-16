@@ -1,6 +1,6 @@
 use super::*;
 
-fn funded_client() -> (Env, LiquifactEscrowClient<'static>, Address, Address) {
+fn funded_client() -> (Env, StarfundEscrowClient<'static>, Address, Address) {
     let env = Env::default();
     env.mock_all_auths();
     let (client, admin, sme) = setup(&env);

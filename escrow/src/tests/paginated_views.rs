@@ -11,21 +11,21 @@ use soroban_sdk::{Address, Env};
 // ── paginate_window unit tests ────────────────────────────────────────────────
 //
 // paginate_window is a private associated function, so we test it through
-// LiquifactEscrow::paginate_window via `crate::` access inside the same crate.
+// StarfundEscrow::paginate_window via `crate::` access inside the same crate.
 
 #[test]
 fn paginate_window_empty_collection_returns_none() {
     // len == 0 → always None regardless of start/limit
-    assert_eq!(crate::LiquifactEscrow::paginate_window(0, 10, 50, 0), None);
-    assert_eq!(crate::LiquifactEscrow::paginate_window(5, 10, 50, 0), None);
+    assert_eq!(crate::StarfundEscrow::paginate_window(0, 10, 50, 0), None);
+    assert_eq!(crate::StarfundEscrow::paginate_window(5, 10, 50, 0), None);
 }
 
 #[test]
 fn paginate_window_start_past_end_returns_none() {
     // start >= len → None
-    assert_eq!(crate::LiquifactEscrow::paginate_window(5, 10, 50, 5), None);
+    assert_eq!(crate::StarfundEscrow::paginate_window(5, 10, 50, 5), None);
     assert_eq!(
-        crate::LiquifactEscrow::paginate_window(100, 10, 50, 5),
+        crate::StarfundEscrow::paginate_window(100, 10, 50, 5),
         None
     );
 }
@@ -33,15 +33,15 @@ fn paginate_window_start_past_end_returns_none() {
 #[test]
 fn paginate_window_zero_limit_returns_none() {
     // limit == 0 → None even when start is valid
-    assert_eq!(crate::LiquifactEscrow::paginate_window(0, 0, 50, 10), None);
-    assert_eq!(crate::LiquifactEscrow::paginate_window(3, 0, 50, 10), None);
+    assert_eq!(crate::StarfundEscrow::paginate_window(0, 0, 50, 10), None);
+    assert_eq!(crate::StarfundEscrow::paginate_window(3, 0, 50, 10), None);
 }
 
 #[test]
 fn paginate_window_first_page() {
     // start=0, limit=5, ceiling=50, len=10 → (0, 5)
     assert_eq!(
-        crate::LiquifactEscrow::paginate_window(0, 5, 50, 10),
+        crate::StarfundEscrow::paginate_window(0, 5, 50, 10),
         Some((0, 5))
     );
 }
@@ -50,7 +50,7 @@ fn paginate_window_first_page() {
 fn paginate_window_continuation_page() {
     // start=5, limit=5, ceiling=50, len=10 → (5, 10)
     assert_eq!(
-        crate::LiquifactEscrow::paginate_window(5, 5, 50, 10),
+        crate::StarfundEscrow::paginate_window(5, 5, 50, 10),
         Some((5, 10))
     );
 }
@@ -59,7 +59,7 @@ fn paginate_window_continuation_page() {
 fn paginate_window_limit_exceeds_remaining_items() {
     // start=7, limit=50, ceiling=50, len=10 → (7, 10)  (clamped at len)
     assert_eq!(
-        crate::LiquifactEscrow::paginate_window(7, 50, 50, 10),
+        crate::StarfundEscrow::paginate_window(7, 50, 50, 10),
         Some((7, 10))
     );
 }
@@ -68,7 +68,7 @@ fn paginate_window_limit_exceeds_remaining_items() {
 fn paginate_window_ceiling_enforced() {
     // limit > ceiling → ceiling is applied; start=0, limit=100, ceiling=20, len=50 → (0, 20)
     assert_eq!(
-        crate::LiquifactEscrow::paginate_window(0, 100, 20, 50),
+        crate::StarfundEscrow::paginate_window(0, 100, 20, 50),
         Some((0, 20))
     );
 }
@@ -76,7 +76,7 @@ fn paginate_window_ceiling_enforced() {
 #[test]
 fn paginate_window_saturating_add_does_not_overflow() {
     // start near u32::MAX with a non-zero limit should not panic
-    let result = crate::LiquifactEscrow::paginate_window(u32::MAX - 1, 50, 50, u32::MAX);
+    let result = crate::StarfundEscrow::paginate_window(u32::MAX - 1, 50, 50, u32::MAX);
     // start (u32::MAX-1) < len (u32::MAX), limit > 0 → Some((u32::MAX-1, u32::MAX))
     assert_eq!(result, Some((u32::MAX - 1, u32::MAX)));
 }
@@ -85,7 +85,7 @@ fn paginate_window_saturating_add_does_not_overflow() {
 
 fn do_init(
     env: &Env,
-    client: &crate::LiquifactEscrowClient<'_>,
+    client: &crate::StarfundEscrowClient<'_>,
     admin: &Address,
     sme: &Address,
     token: &Address,
@@ -158,8 +158,8 @@ fn get_investors_first_page() {
     let token_id = sac.address();
     let sac_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
 
-    let escrow_id = env.register(crate::LiquifactEscrow, ());
-    let client = crate::LiquifactEscrowClient::new(&env, &escrow_id);
+    let escrow_id = env.register(crate::StarfundEscrow, ());
+    let client = crate::StarfundEscrowClient::new(&env, &escrow_id);
     let admin = Address::generate(&env);
     let sme = Address::generate(&env);
     let treasury = Address::generate(&env);
@@ -211,8 +211,8 @@ fn get_investors_continuation_page() {
     let token_id = sac.address();
     let sac_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
 
-    let escrow_id = env.register(crate::LiquifactEscrow, ());
-    let client = crate::LiquifactEscrowClient::new(&env, &escrow_id);
+    let escrow_id = env.register(crate::StarfundEscrow, ());
+    let client = crate::StarfundEscrowClient::new(&env, &escrow_id);
     let admin = Address::generate(&env);
     let sme = Address::generate(&env);
     let treasury = Address::generate(&env);
@@ -262,8 +262,8 @@ fn get_investors_start_past_end_returns_empty() {
     let token_id = sac.address();
     let sac_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
 
-    let escrow_id = env.register(crate::LiquifactEscrow, ());
-    let client = crate::LiquifactEscrowClient::new(&env, &escrow_id);
+    let escrow_id = env.register(crate::StarfundEscrow, ());
+    let client = crate::StarfundEscrowClient::new(&env, &escrow_id);
     let admin = Address::generate(&env);
     let sme = Address::generate(&env);
     let treasury = Address::generate(&env);
@@ -301,7 +301,7 @@ fn get_investors_start_past_end_returns_empty() {
 
 // ── get_allowlisted_investors ─────────────────────────────────────────────────
 
-fn setup_allowlist_escrow(env: &Env) -> (crate::LiquifactEscrowClient<'_>, Address, Address) {
+fn setup_allowlist_escrow(env: &Env) -> (crate::StarfundEscrowClient<'_>, Address, Address) {
     let client = super::deploy(env);
     let admin = Address::generate(env);
     let sme = Address::generate(env);
@@ -427,7 +427,7 @@ fn get_allowlisted_investors_excludes_revoked_addresses() {
 
 // ── get_revoked_attestation_digests ───────────────────────────────────────────
 
-fn setup_attestation_escrow(env: &Env) -> (crate::LiquifactEscrowClient<'_>, Address) {
+fn setup_attestation_escrow(env: &Env) -> (crate::StarfundEscrowClient<'_>, Address) {
     let client = super::deploy(env);
     let admin = Address::generate(env);
     let sme = Address::generate(env);

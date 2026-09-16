@@ -6,7 +6,7 @@
 //! short-circuits lock zero to the base yield, making that tier unreachable at
 //! its exact threshold.
 
-use super::{assert_contract_error, deploy, LiquifactEscrowClient, TARGET};
+use super::{assert_contract_error, deploy, StarfundEscrowClient, TARGET};
 use crate::{EscrowError, YieldResolution, YieldTier};
 use soroban_sdk::{testutils::Address as _, Address, Env, String, Vec as SorobanVec};
 
@@ -23,7 +23,7 @@ fn init_with_tiers<'a>(
     env: &'a Env,
     base_yield_bps: i64,
     tiers: Option<SorobanVec<YieldTier>>,
-) -> LiquifactEscrowClient<'a> {
+) -> StarfundEscrowClient<'a> {
     env.mock_all_auths();
     let client = deploy(env);
     client.init(

@@ -27,7 +27,7 @@ use soroban_sdk::{testutils::Address as _, token::StellarAssetClient};
 
 /// Initialise a minimal escrow (open, maturity=0, no tiers).
 fn init_open(
-    client: &LiquifactEscrowClient<'_>,
+    client: &StarfundEscrowClient<'_>,
     env: &Env,
     admin: &Address,
     sme: &Address,
@@ -61,7 +61,7 @@ fn init_open(
 
 /// Initialise an open escrow with a configured legal-hold clear delay.
 fn init_open_with_clear_delay(
-    client: &LiquifactEscrowClient<'_>,
+    client: &StarfundEscrowClient<'_>,
     env: &Env,
     admin: &Address,
     sme: &Address,
@@ -102,13 +102,13 @@ fn init_funded_with_real_token<'a>(
     sme: &Address,
     investor: &Address,
     id: &str,
-) -> (LiquifactEscrowClient<'a>, Address) {
+) -> (StarfundEscrowClient<'a>, Address) {
     let sac = env.register_stellar_asset_contract_v2(Address::generate(env));
     let token_id = sac.address();
     let sac_admin = StellarAssetClient::new(env, &token_id);
     let treasury = Address::generate(env);
-    let escrow_id = env.register(crate::LiquifactEscrow, ());
-    let client = LiquifactEscrowClient::new(env, &escrow_id);
+    let escrow_id = env.register(crate::StarfundEscrow, ());
+    let client = StarfundEscrowClient::new(env, &escrow_id);
     client.init(
         admin,
         &soroban_sdk::String::from_str(env, id),
@@ -137,7 +137,7 @@ fn init_funded_with_real_token<'a>(
 
 /// Initialise, fund to target, return (token, treasury).
 fn init_funded(
-    client: &LiquifactEscrowClient<'_>,
+    client: &StarfundEscrowClient<'_>,
     env: &Env,
     admin: &Address,
     sme: &Address,
@@ -156,12 +156,12 @@ fn init_settled<'a>(
     sme: &Address,
     investor: &Address,
     id: &str,
-) -> (LiquifactEscrowClient<'a>, Address, Address, Address) {
+) -> (StarfundEscrowClient<'a>, Address, Address, Address) {
     let sac = env.register_stellar_asset_contract_v2(Address::generate(env));
     let token = sac.address();
     let treasury = Address::generate(env);
-    let escrow_id = env.register(LiquifactEscrow, ());
-    let client = LiquifactEscrowClient::new(env, &escrow_id);
+    let escrow_id = env.register(StarfundEscrow, ());
+    let client = StarfundEscrowClient::new(env, &escrow_id);
     client.init(
         admin,
         &soroban_sdk::String::from_str(env, id),
@@ -945,8 +945,8 @@ fn recovery_new_admin_clears_hold_and_operations_resume() {
     let token_id = sac.address();
     let sac_admin = StellarAssetClient::new(&env, &token_id);
     let treasury = Address::generate(&env);
-    let escrow_id = env.register(crate::LiquifactEscrow, ());
-    let client = LiquifactEscrowClient::new(&env, &escrow_id);
+    let escrow_id = env.register(crate::StarfundEscrow, ());
+    let client = StarfundEscrowClient::new(&env, &escrow_id);
 
     client.init(
         &admin,

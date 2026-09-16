@@ -5,7 +5,7 @@ use super::{
 use crate::{
     AttestationDigestAppended, CollateralClearedEvt, CollateralCommitmentSnapshot,
     CollateralRecordedEvt, DataKey, EscrowCloseSnapshot, EscrowError, FundingCancelled,
-    InvestorRefundedEvt, LiquifactEscrow, LiquifactEscrowClient, PauseReason, PauseScope,
+    InvestorRefundedEvt, StarfundEscrow, StarfundEscrowClient, PauseReason, PauseScope,
     PrimaryAttestationBound, RegistryRefRebound, TreasuryDustSwept, YieldTier,
     DEFAULT_MATURITY_MAX_HORIZON_SECS, MAX_ATTESTATION_APPEND_ENTRIES, SCHEMA_VERSION,
 };
@@ -1720,7 +1720,7 @@ fn test_sweep_no_balance() {
 
 #[test]
 fn test_withdraw_happy_path() {
-    use crate::LiquifactEscrow;
+    use crate::StarfundEscrow;
     use soroban_sdk::token::{StellarAssetClient, TokenClient};
 
     let env = Env::default();
@@ -1730,8 +1730,8 @@ fn test_withdraw_happy_path() {
     let token_id = sac.address();
     let sac_admin = StellarAssetClient::new(&env, &token_id);
 
-    let escrow_id = env.register(LiquifactEscrow, ());
-    let client = super::LiquifactEscrowClient::new(&env, &escrow_id);
+    let escrow_id = env.register(StarfundEscrow, ());
+    let client = super::StarfundEscrowClient::new(&env, &escrow_id);
     let admin = Address::generate(&env);
     let sme = Address::generate(&env);
     let treasury = Address::generate(&env);
@@ -2915,7 +2915,7 @@ fn test_record_sme_collateral_commitment_semantics() {
 /// Helper: initialise a standard escrow for is_settleable tests.
 fn init_settleable_test(
     env: &Env,
-    client: &super::LiquifactEscrowClient<'_>,
+    client: &super::StarfundEscrowClient<'_>,
     admin: &Address,
     sme: &Address,
     maturity: u64,
@@ -2944,7 +2944,7 @@ fn init_settleable_test(
 }
 
 /// Fund to exactly the target amount using a fresh investor.
-fn fund_to_target_stl(env: &Env, client: &super::LiquifactEscrowClient<'_>) -> Address {
+fn fund_to_target_stl(env: &Env, client: &super::StarfundEscrowClient<'_>) -> Address {
     let investor = Address::generate(env);
     client.fund(&investor, &1000);
     investor
@@ -3326,7 +3326,7 @@ fn test_is_settleable_after_partial_settle_with_maturity() {
 /// Returns (client, token_address, treasury_address).
 fn init_for_collateral<'a>(
     env: &'a Env,
-    client: &super::LiquifactEscrowClient<'a>,
+    client: &super::StarfundEscrowClient<'a>,
     admin: &Address,
     sme: &Address,
     invoice_id: &str,
@@ -3842,7 +3842,7 @@ fn test_state_machine_illegal_transitions_rejected() {
 fn init_open<'a>(
     env: &'a Env,
     label: &str,
-) -> (super::LiquifactEscrowClient<'a>, Address, Address) {
+) -> (super::StarfundEscrowClient<'a>, Address, Address) {
     let admin = Address::generate(env);
     let sme = Address::generate(env);
     let client = super::deploy(env);

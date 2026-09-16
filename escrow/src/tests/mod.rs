@@ -20,7 +20,7 @@ use super::{
     AttestationDigestAppended, AttestationDigestRevoked, AttestationDigestUnrevoked,
     CollateralRecordedEvt, ContractUpgraded, DataKey, DeprecatedTransferAdminUsed, EscrowError,
     EscrowFunded, EscrowInitialized, EscrowUnfunded, FundingCancelled, FundingStateChanged,
-    FundingTargetUpdated, InvestorRefundedEvt, LiquifactEscrow, LiquifactEscrowClient,
+    FundingTargetUpdated, InvestorRefundedEvt, StarfundEscrow, StarfundEscrowClient,
     MaturityMaxHorizonUpdated, MaxUniqueInvestorsCapLowered, PrimaryAttestationBound,
     RegistryRefRebound, RentStatus, TreasuryDustSwept, YieldTier, MAX_ATTESTATION_APPEND_BATCH,
     MAX_ATTESTATION_APPEND_ENTRIES, MAX_DUST_SWEEP_AMOUNT, MAX_FUND_BATCH, RENT_WARN_LEDGERS,
@@ -93,22 +93,22 @@ mod release_tests;
 
 /// Registers a new escrow contract instance and returns its contract id.
 pub fn deploy_id(env: &Env) -> Address {
-    env.register(LiquifactEscrow, ())
+    env.register(StarfundEscrow, ())
 }
 
-pub fn deploy(env: &Env) -> LiquifactEscrowClient<'_> {
+pub fn deploy(env: &Env) -> StarfundEscrowClient<'_> {
     let id = deploy_id(env);
-    LiquifactEscrowClient::new(env, &id)
+    StarfundEscrowClient::new(env, &id)
 }
 
 #[allow(dead_code)]
-pub fn deploy_with_id(env: &Env) -> (Address, LiquifactEscrowClient<'_>) {
+pub fn deploy_with_id(env: &Env) -> (Address, StarfundEscrowClient<'_>) {
     let id = deploy_id(env);
-    let client = LiquifactEscrowClient::new(env, &id);
+    let client = StarfundEscrowClient::new(env, &id);
     (id, client)
 }
 
-pub fn setup(env: &Env) -> (LiquifactEscrowClient<'_>, Address, Address) {
+pub fn setup(env: &Env) -> (StarfundEscrowClient<'_>, Address, Address) {
     let mut ledger_info = env.ledger().get();
     ledger_info.timestamp = 0;
     ledger_info.sequence_number = 100;
@@ -141,7 +141,7 @@ pub fn install_stellar_asset_token<'a>(env: &'a Env) -> StellarTestToken<'a> {
 }
 
 #[allow(dead_code)]
-pub fn default_init(client: &LiquifactEscrowClient<'_>, env: &Env, admin: &Address, sme: &Address) {
+pub fn default_init(client: &StarfundEscrowClient<'_>, env: &Env, admin: &Address, sme: &Address) {
     let (token, treasury) = free_addresses(env);
     client.init(
         admin,
@@ -173,13 +173,13 @@ pub fn init_and_fund_with_real_token<'a>(
     env: &'a Env,
     target: i128,
     invoice_id: &str,
-) -> (LiquifactEscrowClient<'a>, Address, Address) {
+) -> (StarfundEscrowClient<'a>, Address, Address) {
     let sac = env.register_stellar_asset_contract_v2(Address::generate(env));
     let token_id = sac.address();
     let sac_admin = StellarAssetClient::new(env, &token_id);
 
-    let escrow_id = env.register(LiquifactEscrow, ());
-    let client = LiquifactEscrowClient::new(env, &escrow_id);
+    let escrow_id = env.register(StarfundEscrow, ());
+    let client = StarfundEscrowClient::new(env, &escrow_id);
     let admin = Address::generate(env);
     let sme = Address::generate(env);
     let treasury = Address::generate(env);

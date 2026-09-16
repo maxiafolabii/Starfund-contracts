@@ -9,7 +9,7 @@
 //! `MIN_PAUSE_*_SECS` / `MAX_PAUSE_*_SECS` contract constants.
 
 use super::super::{
-    EscrowError, LiquifactEscrow, LiquifactEscrowClient, PauseReason, PauseScope,
+    EscrowError, StarfundEscrow, StarfundEscrowClient, PauseReason, PauseScope,
     MAX_PAUSE_MAX_DURATION_SECS, MAX_PAUSE_TOGGLE_LIMIT, MAX_PAUSE_TOGGLE_WINDOW_SECS,
     MIN_PAUSE_MAX_DURATION_SECS, MIN_PAUSE_TOGGLE_LIMIT, MIN_PAUSE_TOGGLE_WINDOW_SECS,
 };
@@ -19,10 +19,10 @@ use soroban_sdk::{
     Address, Env,
 };
 
-fn setup_escrow(env: &Env) -> (LiquifactEscrowClient<'_>, Address, Address) {
+fn setup_escrow(env: &Env) -> (StarfundEscrowClient<'_>, Address, Address) {
     // Mirror of collateral_boundary_tests::setup_escrow; kept local for test isolation.
-    let id = env.register(LiquifactEscrow, ());
-    let client = LiquifactEscrowClient::new(env, &id);
+    let id = env.register(StarfundEscrow, ());
+    let client = StarfundEscrowClient::new(env, &id);
     let admin = Address::generate(env);
     let sme = Address::generate(env);
     let token = Address::generate(env);

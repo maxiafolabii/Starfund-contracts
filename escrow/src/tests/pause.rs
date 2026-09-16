@@ -5,7 +5,7 @@ use soroban_sdk::{testutils::Events, token::StellarAssetClient, Event};
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 fn init_open(
-    client: &LiquifactEscrowClient<'_>,
+    client: &StarfundEscrowClient<'_>,
     env: &Env,
     admin: &Address,
     sme: &Address,
@@ -38,7 +38,7 @@ fn init_open(
 }
 
 fn init_funded(
-    client: &LiquifactEscrowClient<'_>,
+    client: &StarfundEscrowClient<'_>,
     env: &Env,
     admin: &Address,
     sme: &Address,
@@ -56,13 +56,13 @@ fn init_funded_with_real_token<'a>(
     sme: &Address,
     investor: &Address,
     id: &str,
-) -> (LiquifactEscrowClient<'a>, Address) {
+) -> (StarfundEscrowClient<'a>, Address) {
     let sac = env.register_stellar_asset_contract_v2(Address::generate(env));
     let token_id = sac.address();
     let sac_admin = StellarAssetClient::new(env, &token_id);
     let treasury = Address::generate(env);
-    let escrow_id = env.register(LiquifactEscrow, ());
-    let client = LiquifactEscrowClient::new(env, &escrow_id);
+    let escrow_id = env.register(StarfundEscrow, ());
+    let client = StarfundEscrowClient::new(env, &escrow_id);
     client.init(
         admin,
         &soroban_sdk::String::from_str(env, id),
@@ -95,12 +95,12 @@ fn init_settled<'a>(
     sme: &Address,
     investor: &Address,
     id: &str,
-) -> (LiquifactEscrowClient<'a>, Address, Address, Address) {
+) -> (StarfundEscrowClient<'a>, Address, Address, Address) {
     let sac = env.register_stellar_asset_contract_v2(Address::generate(env));
     let token = sac.address();
     let treasury = Address::generate(env);
-    let escrow_id = env.register(LiquifactEscrow, ());
-    let client = LiquifactEscrowClient::new(env, &escrow_id);
+    let escrow_id = env.register(StarfundEscrow, ());
+    let client = StarfundEscrowClient::new(env, &escrow_id);
     client.init(
         admin,
         &soroban_sdk::String::from_str(env, id),

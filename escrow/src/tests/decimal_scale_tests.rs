@@ -11,7 +11,7 @@ use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env};
 
 use super::{deploy, install_stellar_asset_token};
-use crate::{EscrowError, LiquifactEscrow, MAX_INVOICE_AMOUNT};
+use crate::{EscrowError, StarfundEscrow, MAX_INVOICE_AMOUNT};
 
 // ---------------------------------------------------------------------------
 // Shared helper
@@ -24,7 +24,7 @@ fn deploy_with_scale<'a>(
     token_decimals: u32,
     target: i128,
 ) -> (
-    crate::LiquifactEscrowClient<'a>,
+    crate::StarfundEscrowClient<'a>,
     Address,
     soroban_sdk::token::StellarAssetClient<'a>,
 ) {

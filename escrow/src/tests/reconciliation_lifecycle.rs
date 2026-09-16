@@ -4,7 +4,7 @@
 //! # Invariant
 //! At every checkpoint the view's `outstanding_liability` must equal
 //! `max(funded_amount - get_distributed_principal(), 0)` — the same formula
-//! used by the [`sweep_terminal_dust`](crate::LiquifactEscrow::sweep_terminal_dust)
+//! used by the [`sweep_terminal_dust`](crate::StarfundEscrow::sweep_terminal_dust)
 //! liability floor.
 //!
 //! # Coverage
@@ -32,7 +32,7 @@ use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, E
 
 /// Assert the central liability invariant and check that `token_balance` matches
 /// the live contract balance.
-fn assert_invariant(client: &LiquifactEscrowClient<'_>, token: &StellarTestToken<'_>) {
+fn assert_invariant(client: &StarfundEscrowClient<'_>, token: &StellarTestToken<'_>) {
     let view = client.get_reconciliation();
     let escrow = client.get_escrow();
     let distributed = client.get_distributed_principal();
@@ -55,7 +55,7 @@ fn setup_escrow<'a>(
     env: &'a Env,
     target: i128,
     invoice_id: &str,
-) -> (LiquifactEscrowClient<'a>, StellarTestToken<'a>, Address) {
+) -> (StarfundEscrowClient<'a>, StellarTestToken<'a>, Address) {
     env.mock_all_auths();
     let (client, admin, sme) = setup(env);
     let token = install_stellar_asset_token(env);
@@ -88,7 +88,7 @@ fn setup_escrow<'a>(
 
 /// Mint `amount` to `address`, then call `client.fund(investor, amount)`.
 fn mint_and_fund(
-    client: &LiquifactEscrowClient<'_>,
+    client: &StarfundEscrowClient<'_>,
     token: &StellarTestToken<'_>,
     investor: &Address,
     amount: i128,

@@ -22,7 +22,7 @@ use soroban_sdk::{
 fn setup_inited(
     env: &Env,
 ) -> (
-    crate::LiquifactEscrowClient<'_>,
+    crate::StarfundEscrowClient<'_>,
     Address,
     Address,
     Address,
@@ -100,7 +100,7 @@ use crate::EscrowError;
 fn setup_funded(
     env: &Env,
 ) -> (
-    crate::LiquifactEscrowClient<'_>,
+    crate::StarfundEscrowClient<'_>,
     Address,
     Address,
     Address,
@@ -142,7 +142,7 @@ fn setup_funded(
 fn setup_settled(
     env: &Env,
 ) -> (
-    crate::LiquifactEscrowClient<'_>,
+    crate::StarfundEscrowClient<'_>,
     Address,
     Address,
     Address,

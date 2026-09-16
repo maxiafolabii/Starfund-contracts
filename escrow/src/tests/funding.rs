@@ -572,7 +572,7 @@ fn test_investor_contribution_overflow_panics_even_if_state_is_inconsistent() {
             &(i128::MAX - 1),
         );
 
-        let mut escrow = LiquifactEscrow::get_escrow(env.clone());
+        let mut escrow = StarfundEscrow::get_escrow(env.clone());
 
         escrow.funded_amount = 0;
 
@@ -631,7 +631,7 @@ fn test_investor_contribution_overflow_does_not_mutate_state() {
             &(i128::MAX - 1),
         );
 
-        let mut escrow = LiquifactEscrow::get_escrow(env.clone());
+        let mut escrow = StarfundEscrow::get_escrow(env.clone());
 
         escrow.funded_amount = 0;
 
@@ -3039,7 +3039,7 @@ fn test_cap_panic_message_quality() {
 fn init_with_token<'a>(
     env: &'a Env,
 
-    client: &LiquifactEscrowClient<'a>,
+    client: &StarfundEscrowClient<'a>,
 
     admin: &Address,
 
@@ -3877,7 +3877,7 @@ fn test_fund_first_deposit_sets_base_yield_and_no_claim_gate() {
 fn init_with_maturity(
     env: &Env,
 
-    client: &crate::LiquifactEscrowClient<'_>,
+    client: &crate::StarfundEscrowClient<'_>,
 
     admin: &soroban_sdk::Address,
 
@@ -5663,7 +5663,7 @@ fn setup_partially_funded(
     funded: i128,
 
     target: i128,
-) -> super::LiquifactEscrowClient<'_> {
+) -> super::StarfundEscrowClient<'_> {
     let client = super::deploy(env);
 
     let admin = Address::generate(env);
@@ -6080,7 +6080,7 @@ fn init_deadline_escrow<'a>(
     invoice_id: &str,
     maturity: u64,
     deadline: Option<u64>,
-) -> (Address, LiquifactEscrowClient<'a>, Address, Address) {
+) -> (Address, StarfundEscrowClient<'a>, Address, Address) {
     let (contract_id, client) = super::deploy_with_id(env);
     let admin = Address::generate(env);
     let sme = Address::generate(env);
@@ -6365,7 +6365,7 @@ fn setup_three_tier_escrow_with_sac<'a>(
     env: &'a Env,
     invoice_id: &str,
     target: i128,
-) -> (LiquifactEscrowClient<'a>, StellarAssetClient<'a>) {
+) -> (StarfundEscrowClient<'a>, StellarAssetClient<'a>) {
     let admin = Address::generate(env);
 
     let sme = Address::generate(env);
@@ -6428,7 +6428,7 @@ fn setup_three_tier_escrow_with_sac<'a>(
 /// Uses a freshly-generated address for the investor so no prior deposit
 /// can interfere with tier selection.
 fn assert_preview_matches_actual(
-    client: &LiquifactEscrowClient,
+    client: &StarfundEscrowClient,
     env: &Env,
     sac_admin: &StellarAssetClient,
     amount: i128,
@@ -6647,7 +6647,7 @@ fn test_tiered_second_deposit_different_lock_rejected() {
 fn init_with_funding_deadline<'a>(
     env: &'a Env,
 
-    client: &LiquifactEscrowClient<'a>,
+    client: &StarfundEscrowClient<'a>,
 
     admin: &Address,
 
@@ -7093,15 +7093,15 @@ fn init_open_with_real_token<'a>(
     env: &'a Env,
     amount: i128,
 ) -> (
-    LiquifactEscrowClient<'a>,
+    StarfundEscrowClient<'a>,
     Address, // contract_id
     crate::tests::StellarTestToken<'a>,
     Address, // investor
 ) {
     use soroban_sdk::token::StellarAssetClient;
     let token = install_stellar_asset_token(env);
-    let escrow_id = env.register(LiquifactEscrow, ());
-    let client = LiquifactEscrowClient::new(env, &escrow_id);
+    let escrow_id = env.register(StarfundEscrow, ());
+    let client = StarfundEscrowClient::new(env, &escrow_id);
     let admin = Address::generate(env);
     let sme = Address::generate(env);
     let treasury = Address::generate(env);

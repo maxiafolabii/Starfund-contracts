@@ -1174,7 +1174,7 @@ fn funded_and_settled_escrow<'a>(
     invoice_id: &str,
     yield_bps: i64,
     contributions: &[(Address, i128)],
-) -> super::LiquifactEscrowClient<'a> {
+) -> super::StarfundEscrowClient<'a> {
     let client = deploy(env);
     let admin = Address::generate(env);
     let sme = Address::generate(env);
@@ -1551,7 +1551,7 @@ fn cancelled_escrow<'a>(
     env: &'a Env,
     invoice_id: &str,
     contributions: &[(Address, i128)],
-) -> super::LiquifactEscrowClient<'a> {
+) -> super::StarfundEscrowClient<'a> {
     let client = deploy(env);
     let admin = Address::generate(env);
     let sme = Address::generate(env);
@@ -1705,7 +1705,7 @@ fn tiered_funded_and_settled_escrow<'a>(
     tier1_bps: i64,
     tier2_bps: i64,
     contributions: &[(Address, i128, u64)],
-) -> super::LiquifactEscrowClient<'a> {
+) -> super::StarfundEscrowClient<'a> {
     let client = deploy(env);
     let admin = Address::generate(env);
     let sme = Address::generate(env);
@@ -2125,7 +2125,7 @@ fn snapshot_denominator_consistent_across_all_payout_reads() {
 ///
 /// When a cap is present: `count + remaining == cap` and `remaining >= 0`.
 /// When no cap: `get_remaining_investor_slots` returns `None`.
-fn assert_slots_invariant(client: &super::LiquifactEscrowClient<'_>, label: &str) {
+fn assert_slots_invariant(client: &super::StarfundEscrowClient<'_>, label: &str) {
     match client.get_remaining_investor_slots() {
         None => {
             // No cap — correct; nothing more to assert.
