@@ -26,6 +26,16 @@ node_modules/
 
 # OS
 .DS_Store
-pr.mdescrow/proptest-regressions/
 
-escrow/proptest-regressions/
+# Scratch / captured output (do not recreate at repo root)
+*.exe
+*.pdb
+ci_logs*.txt
+ci_main.txt
+out.txt
+test_out*.log
+commit_msg.txt
+ghit-*.md
+
+# Note: escrow/proptest-regressions/ is intentionally tracked — proptest
+# regression seeds must be committed for reproducible CI runs.
