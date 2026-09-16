@@ -8,15 +8,15 @@ Append three new error variants to the `EscrowError` enum (append-only — do no
 remove existing variants):
 
 ```rust
-/// [`LiquifactEscrow::unfund`] called when [`InvoiceEscrow::status`] is not 0 (open).
+/// [`StarfundEscrow::unfund`] called when [`InvoiceEscrow::status`] is not 0 (open).
 /// Unfunding is only valid while the escrow is still accepting contributions.
 EscrowNotOpen = 165,
 
-/// [`LiquifactEscrow::unfund`] requested amount exceeds the investor's recorded contribution.
+/// [`StarfundEscrow::unfund`] requested amount exceeds the investor's recorded contribution.
 /// Never withdraw more than was contributed; checked via [`i128::checked_sub`].
 OverWithdrawal = 166,
 
-/// [`LiquifactEscrow::unfund`] blocked because a compliance/legal hold is active.
+/// [`StarfundEscrow::unfund`] blocked because a compliance/legal hold is active.
 /// No fund movement is permitted until the hold is cleared by the admin.
 LegalHoldActive = 167,
 ```
@@ -55,7 +55,7 @@ reference it.
 
 **File:** `escrow/src/lib.rs`
 
-Add the `unfund` entrypoint inside `#[contractimpl] impl LiquifactEscrow`, immediately after
+Add the `unfund` entrypoint inside `#[contractimpl] impl StarfundEscrow`, immediately after
 the `refund` entrypoint (before `is_investor_refunded`).
 
 The implementation must follow this exact sequence:

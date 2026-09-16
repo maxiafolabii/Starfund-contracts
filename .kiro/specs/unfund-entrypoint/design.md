@@ -3,7 +3,7 @@
 ## Overview
 
 Add a new `unfund(investor: Address, amount: i128) -> InvoiceEscrow` entrypoint to the
-LiquiFact escrow contract. It lets an investor partially or fully withdraw their
+StarFund escrow contract. It lets an investor partially or fully withdraw their
 contribution while the escrow is still in the **open** state (`status == 0`), without
 requiring the escrow to be cancelled first.
 
@@ -136,15 +136,15 @@ The current highest used error code is `164` (duplicated for `NoPendingAdmin = 1
 ### NatSpec doc comments (to be placed in the enum definition)
 
 ```rust
-/// [`LiquifactEscrow::unfund`] called when [`InvoiceEscrow::status`] is not 0 (open).
+/// [`StarfundEscrow::unfund`] called when [`InvoiceEscrow::status`] is not 0 (open).
 /// Unfunding is only valid while the escrow is still accepting contributions.
 EscrowNotOpen = 165,
 
-/// [`LiquifactEscrow::unfund`] requested amount exceeds the investor's recorded contribution.
+/// [`StarfundEscrow::unfund`] requested amount exceeds the investor's recorded contribution.
 /// Never withdraw more than was contributed; checked via [`i128::checked_sub`].
 OverWithdrawal = 166,
 
-/// [`LiquifactEscrow::unfund`] blocked because a compliance/legal hold is active.
+/// [`StarfundEscrow::unfund`] blocked because a compliance/legal hold is active.
 /// No fund movement is permitted until the hold is cleared by the admin.
 LegalHoldActive = 167,
 ```

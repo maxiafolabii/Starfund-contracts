@@ -2,7 +2,7 @@
 
 ## Background
 
-The LiquiFact escrow contract exposes a `refund` entrypoint that returns investor principal,
+The StarFund escrow contract exposes a `refund` entrypoint that returns investor principal,
 but only when the escrow has been cancelled (status 4). Investors who wish to reduce or exit
 their position while the escrow is still open (status 0) have no on-chain mechanism to do so.
 
