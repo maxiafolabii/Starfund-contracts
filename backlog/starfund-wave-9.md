@@ -1,1177 +1,2326 @@
-# StarFund Contracts — Backlog Wave 9
+# StarFund Contracts — Backlog Wave 9 (Published Archive)
 
-Numbering starts at **#1**. Starting index was determined by checking GitHub for the highest
-existing issue/PR number on `ushpraise/Starfund-contracts` via both `gh issue list --state all`
-and `gh pr list --state all` (issues and PRs share one counter) and the equivalent REST endpoint
-(`GET /repos/ushpraise/Starfund-contracts/issues?state=all&sort=created&direction=desc&per_page=1`).
-All three returned an empty result — **no issues or PRs exist yet on this repo** — so numbering
-starts fresh at #1.
+## Backlog Status & Audit History
 
-**Read this first:** issues #1–#19 (Bug Fixes) describe why `cargo build -p starfund_escrow`
-currently fails with **104 compiler errors**. Nothing else in this backlog can be verified by CI
-until at least #1–#8 land, since the crate does not compile today. This was confirmed by
-installing a local Rust toolchain and running `cargo clippy -p starfund_escrow --all-targets -- -D warnings`
-from a clean `main` checkout.
+- **Repository:** `ushpraise/Starfund-contracts` (`https://github.com/ushpraise/Starfund-contracts`)
+- **Status:** **Published to GitHub (All 110 Wave 9 Issues Live)**
+- **Active / Unpublished Backlog Remaining:** **0** (all issues published)
+- **Publication Waves:**
+  - **Wave 9 Batch 1 (#1–#50):** Published as GitHub issues **#20 through #69**, archived in [`drips wave 9.md`](../drips%20wave%209.md).
+  - **Wave 9 Batch 2 (#51–#110):** Published as GitHub issues **#70 through #129**, detailed below with full technical descriptions and GitHub issue links.
+- **Traceability Guarantee:** Every issue below preserves its original Wave backlog number (#51–#110), its assigned GitHub issue number (#70–#129), complete technical context, reproduction evidence, and acceptance criteria.
 
 ---
 
-## Bug Fixes
+# Published Wave 9 Issues (#51 through #110)
 
-## #1: `DataKey::PauseState` and `EscrowError::PauseScopeMismatch` are missing — the scoped-pause feature does not compile
+## Issue #51 — State Corruption: `sweep_terminal_dust` Unconditionally Sets `status = 2` (Settled) on Cancelled Escrows
 
-**Filed as:** [GitHub issue #4](https://github.com/ushpraise/Starfund-contracts/issues/4)
+**Filed as:** [GitHub issue #70](https://github.com/ushpraise/Starfund-contracts/issues/70)
 
-**Category:** Bug · **Size:** M
+**Category:** Bug / Security  
+**Priority:** Critical  
+**Suggested Complexity:** Medium  
 
-**Context:** `lib.rs` defines a full scoped-pause system — `PauseScope` enum (line ~1431),
-`PauseState` struct (line ~1499), `StarfundEscrow::set_paused` (writes `PauseState` at line ~5285),
-`StarfundEscrow::get_pause_state` (reads it at line ~2858) — that stores its state under
-`DataKey::PauseState`. That variant does not exist on the `DataKey` enum (`escrow/src/lib.rs:1247`),
-so every one of the ~16 references to it fails with `E0599: no variant ... named 'PauseState' found
-for enum 'DataKey'`. The companion error `EscrowError::PauseScopeMismatch` (referenced 3 times,
-e.g. at the scope-mismatch check in `set_paused`) is likewise never defined on `EscrowError`
-(`escrow/src/lib.rs:578`).
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::sweep_terminal_dust()` (lines 3485–3540, specifically line 3536)
 
-**Files/functions:** `escrow/src/lib.rs` — `DataKey` enum, `EscrowError` enum, `PauseState`,
-`PauseScope`, `set_paused`, `get_pause_state`, `paused_active`.
+**Problem**  
+In `StarfundEscrow::sweep_terminal_dust()`, the function allows sweeping dust when `is_terminal_status(escrow.status)` is true (which includes `2: Settled`, `3: Withdrawn`, and `4: Cancelled`). At lines 3513–3527, it explicitly handles the cancelled state (`escrow.status == 4`) to compute the outstanding liability floor for unrefunded investors. However, immediately after executing the token transfer at line 3536, it unconditionally executes:
+```rust
+escrow.status = 2;
+env.storage().instance().set(&DataKey::Escrow, &escrow);
+```
+If `sweep_terminal_dust` is called on a Cancelled escrow (`status == 4`), it mutates the contract status to Settled (`status == 2`).
 
-**Acceptance criteria:**
-- Add `PauseState` as a new (appended, per ADR-007 Rule 6) `DataKey` variant.
-- Add `PauseScopeMismatch` as a new (appended) `EscrowError` variant with a fresh, non-colliding
-  discriminant (cross-check against #8 before picking a number).
-- `cargo build -p starfund_escrow` succeeds through this portion of the enum.
-- `docs/adr/ADR-007-storage-key-evolution.md` Rule 1 (additive-key policy) is satisfied: read with
-  `.unwrap_or(default)`, no existing entrypoint semantics change.
+**Why it matters**  
+This state corruption has catastrophic consequences for escrow accounting and investor protection:
+1. `StarfundEscrow::refund()` requires `escrow.status == 4` (`EscrowError::RefundNotCancelled`). Mutating a cancelled escrow to `status = 2` permanently locks remaining investors out from claiming their principal refunds.
+2. Conversely, `StarfundEscrow::claim_investor_payout()` requires `escrow.status == 2` (`EscrowError::InvestorClaimNotSettled`). A cancelled escrow mutated to `status = 2` now allows investors to call `claim_investor_payout()`, which computes coupon and settlement pool payouts against nonexistent borrower repayments!
+3. Furthermore, `sweep_terminal_dust` emits no event upon execution, leaving no on-chain trace of the sweep or status change.
 
----
+**Proposed solution**  
+1. Preserve the existing status rather than overwriting it with `2`. The status should remain unchanged (if status was 4, it remains 4; if 3, it remains 3; if 2, it remains 2).
+2. Remove `escrow.status = 2;` or only update status if transitioning from a non-terminal state.
+3. Emit a `TreasuryDustSwept` event with `invoice_id`, `treasury`, `amount`, and `remaining_balance`.
 
-## #2: `DataKey::ReleasedAmount` and `DataKey::AdminNonce` are missing — `release()` and admin-nonce replay protection don't compile
+**Acceptance criteria**  
+- Calling `sweep_terminal_dust` on an escrow with `status == 4` leaves `escrow.status` equal to `4`.
+- Remaining investors can successfully call `refund()` after a partial dust sweep on a cancelled escrow.
+- An event is emitted when dust is swept.
 
-**Filed as:** [GitHub issue #3](https://github.com/ushpraise/Starfund-contracts/issues/3)
-
-**Category:** Bug · **Size:** S
-
-**Context:** `escrow/src/keys.rs::released_amount()` returns `DataKey::ReleasedAmount`, and it's the
-only key `StarfundEscrow::release` (`escrow/src/lib.rs:6900`) uses to track cumulative SME
-disbursement. `DataKey::AdminNonce` (5 references) backs `consume_admin_nonce` /
-`get_admin_nonce` (`escrow/src/lib.rs:3777`, `:3829`), which every dual-auth and nonce-gated
-entrypoint calls (`set_legal_hold`, `set_allowlist_active`, `set_investor_allowlisted(s)`,
-`rotate_beneficiary`, `request_clear_legal_hold`). Neither variant exists on `DataKey`.
-
-**Files/functions:** `escrow/src/lib.rs` `DataKey` enum; `escrow/src/keys.rs::released_amount`;
-`consume_admin_nonce`, `get_admin_nonce`.
-
-**Acceptance criteria:**
-- Add `ReleasedAmount` and `AdminNonce` as new appended `DataKey` variants.
-- `release()` and every nonce-consuming entrypoint compile and pass their existing tests once
-  re-enabled.
+**Testing**  
+- Add a unit test in `escrow/src/tests/` executing `sweep_terminal_dust` on a cancelled escrow and asserting `client.get_escrow().status == 4`.
+- Assert that subsequent calls to `client.refund(&investor)` succeed.
 
 ---
 
-## #3: `EscrowError` is missing 5 variants required by `release()`
+## Issue #52 — `settle()` Never Writes `DataKey::SettledAt`, Breaking `get_settled_at()` and Settlement Audits
 
-**Filed as:** [GitHub issue #5](https://github.com/ushpraise/Starfund-contracts/issues/5)
+**Filed as:** [GitHub issue #71](https://github.com/ushpraise/Starfund-contracts/issues/71)
 
-**Category:** Bug · **Size:** S
+**Category:** Bug  
+**Priority:** High  
+**Suggested Complexity:** Trivial  
 
-**Context:** `StarfundEscrow::release` (`escrow/src/lib.rs:6900-6990`) references
-`EscrowError::ReleaseAmountNotPositive`, `PausedBlocksRelease`, `LegalHoldBlocksRelease`,
-`ReleaseNotFunded`, and `ReleaseExceedsRemaining` — none of which are defined on the enum
-(`escrow/src/lib.rs:578`).
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::settle()` (lines 6790–6845)
+- `StarfundEscrow::get_settled_at()` (lines 4370–4372)
 
-**Files/functions:** `escrow/src/lib.rs::release`, `EscrowError` enum.
+**Problem**  
+The documentation for `settle()` at line 6790 states that `settle()` records the settled marker atomically:
+`// writer of the SettledAt marker, so status == 2 uniquely identifies an escrow that has already been settled.`
+Likewise, doc comments for `get_settled_at` at line 4361 explain:
+`/// Returns the ledger timestamp (seconds since Unix epoch) at which StarfundEscrow::settle transitioned status from 1 -> 2, or None if the escrow has not yet been settled.`
+However, in the actual implementation of `StarfundEscrow::settle()` (lines 6825–6830):
+```rust
+escrow.status = 2;
+env.storage().instance().set(&DataKey::Escrow, &escrow);
+extend_ttl_for_activity(&env, &escrow, None);
+```
+`DataKey::SettledAt` is **never written to storage**!
 
-**Acceptance criteria:**
-- Add all 5 variants as new appended discriminants (pick values that don't collide — see #8).
-- `release()` compiles; add/re-enable a happy-path and a per-error negative test for each variant.
+**Why it matters**  
+Because `DataKey::SettledAt` is never set during settlement, `StarfundEscrow::get_settled_at()` (`env.storage().instance().get(&DataKey::SettledAt)`) always returns `None`, even after an escrow has been successfully settled. Off-chain indexers, UI dashboards, and smart contracts querying `get_settled_at()` cannot retrieve the settlement timestamp.
 
----
+**Proposed solution**  
+In `StarfundEscrow::settle()`, write the current ledger timestamp to `DataKey::SettledAt`:
+```rust
+let now = env.ledger().timestamp();
+...
+env.storage().instance().set(&DataKey::SettledAt, &now);
+```
 
-## #4: `EscrowError` is missing 3 variants required by `partial_settle()`
+**Acceptance criteria**  
+- `StarfundEscrow::settle()` writes `DataKey::SettledAt` atomically when transitioning status to 2.
+- `StarfundEscrow::get_settled_at()` returns `Some(timestamp)` after `settle()` is called.
 
-**Filed as:** [GitHub issue #6](https://github.com/ushpraise/Starfund-contracts/issues/6)
-
-**Category:** Bug · **Size:** S
-
-**Context:** `StarfundEscrow::partial_settle` (`escrow/src/lib.rs:6715`) references
-`EscrowError::PartialSettleNotOpen`, `PartialSettleUnauthorizedCaller`, and
-`LegalHoldBlocksPartialSettle`. None exist on `EscrowError`. (`DisputeBlocksPartialSettle` already
-exists at discriminant 240 but collides with `CallbackWrongOrigin` — see #8.)
-
-**Files/functions:** `escrow/src/lib.rs::partial_settle`, `EscrowError` enum.
-
-**Acceptance criteria:**
-- Add the 3 missing variants with fresh discriminants.
-- `partial_settle()` compiles; negative-auth and status-guard tests exist for each new variant.
-
----
-
-## #5: `EscrowError` is missing 3 variants required by `rotate_payer()`
-
-**Filed as:** [GitHub issue #7](https://github.com/ushpraise/Starfund-contracts/issues/7)
-
-**Category:** Bug · **Size:** S
-
-**Context:** `StarfundEscrow::rotate_payer` (`escrow/src/lib.rs:3689`) references
-`EscrowError::NewPayerSameAsCurrent`, `PayerRotationNotOpen`, and `LegalHoldBlocksPayerRotation`
-in its own rustdoc error table, none of which exist on `EscrowError`.
-
-**Files/functions:** `escrow/src/lib.rs::rotate_payer`, `EscrowError` enum.
-
-**Acceptance criteria:**
-- Add the 3 missing variants with fresh discriminants.
-- `rotate_payer()` compiles. See also #46/#50 (security) for the auth-model gaps in this same
-  function — coordinate discriminant choice with whatever nonce parameter that work adds.
+**Testing**  
+- Add test asserting `client.get_settled_at() == Some(now)` immediately following `client.settle()`.
 
 ---
 
-## #6: `EscrowError` is missing variants for the four monotonic raise/lower admin-config entrypoints
+## Issue #53 — `settle()` Permits Transition to Settled Without Verifying Contract Token Balance Covers `settle_pool`
 
-**Filed as:** [GitHub issue #8](https://github.com/ushpraise/Starfund-contracts/issues/8)
+**Filed as:** [GitHub issue #72](https://github.com/ushpraise/Starfund-contracts/issues/72)
 
-**Category:** Bug · **Size:** L
+**Category:** Bug / Security  
+**Priority:** High  
+**Suggested Complexity:** Medium  
 
-**Context:** Four entrypoints reference `EscrowError` variants that don't exist:
-- `lower_min_contribution_floor` (`escrow/src/lib.rs:6090`) → `NewFloorNotLower`, `NewFloorNotPositive`
-- `raise_max_per_investor` (`:6139`) → `MaxPerInvestorCapNotConfigured`, `MaxPerInvestorCapNotRaised`
-- `extend_funding_deadline` (`:7565`) → `FundingDeadlineNotExtended`
-- `raise_maturity_max_horizon` (`:7684`) → `HorizonNotRaised`
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::settle()` (lines 6810–6840)
 
-All four share the same shape of bug (a monotonic-adjustment guard whose error variant was never
-added to the enum), which is why they're grouped, but each needs its own test coverage since the
-guarded invariant differs per entrypoint.
+**Problem**  
+In `StarfundEscrow::settle()`, the contract checks that status is `1` (Funded) and that `maturity` has elapsed (`now >= escrow.maturity`). It then calculates `coupon` and `settle_pool = funded_amount + coupon`. It immediately sets `escrow.status = 2` (Settled) and publishes `EscrowSettled`.
+However, `settle()` never checks whether the contract actually holds a token balance sufficient to cover `settle_pool` (`TokenClient::balance(&this) >= settle_pool`).
 
-**Files/functions:** `escrow/src/lib.rs` — the four functions above, `EscrowError` enum.
+**Why it matters**  
+If the SME or borrower has not yet deposited the repayment funds (principal + coupon) into the escrow contract, calling `settle()` will still succeed and permanently mark the escrow as Settled (`status = 2`).
+Once settled:
+1. The contract can never be cancelled via `cancel_funding` (which requires status 0).
+2. The SME cannot withdraw.
+3. When investors attempt to claim their payouts via `claim_investor_payout()`, `transfer_funding_token_with_balance_checks` will revert with `InsufficientTokenBalanceBeforeTransfer`.
+4. The contract is permanently bricked in a pseudo-settled state with insolvent token balances.
 
-**Acceptance criteria:**
-- Add all 6 variants with fresh discriminants.
-- Each of the 4 entrypoints compiles and has a positive test (successful raise/lower) and a
-  negative test (rejected no-op / wrong-direction adjustment).
+**Proposed solution**  
+In `StarfundEscrow::settle()`, query the contract's funding token balance before transitioning status:
+```rust
+let token_addr = Self::funding_token_or_fail(&env);
+let balance = TokenClient::new(&env, &token_addr).balance(&env.current_contract_address());
+ensure(&env, balance >= settle_pool, EscrowError::InsufficientContractBalance);
+```
 
----
+**Acceptance criteria**  
+- `StarfundEscrow::settle()` reverts with `EscrowError::InsufficientContractBalance` if contract token balance is less than `settle_pool`.
+- `settle()` succeeds when repayment has been deposited.
 
-## #7: `EscrowError` is missing `CollateralBatchEmpty`/`CollateralBatchTooLarge` for `batch_record_collateral`
-
-**Filed as:** [GitHub issue #9](https://github.com/ushpraise/Starfund-contracts/issues/9)
-
-**Category:** Bug · **Size:** S
-
-**Context:** The batch collateral-recording entrypoint referenced by
-`docs/escrow-security-checklist.md` §1 (`record_sme_collateral_commitment_batch` /
-`MAX_COLLATERAL_BATCH`) needs `EscrowError::CollateralBatchEmpty` and `CollateralBatchTooLarge`,
-neither of which is defined.
-
-**Files/functions:** `escrow/src/lib.rs` — batch collateral entrypoint, `EscrowError` enum,
-`MAX_COLLATERAL_BATCH` (line ~456).
-
-**Acceptance criteria:**
-- Add both variants with fresh discriminants.
-- Add empty-batch and over-`MAX_COLLATERAL_BATCH` negative tests.
+**Testing**  
+- Add negative test asserting `client.try_settle()` reverts with `InsufficientContractBalance` when repayment funds are missing.
+- Add test verifying settlement succeeds when tokens are properly deposited.
 
 ---
 
-## #8: `EscrowError` enum integrity: 1 duplicate variant name + 8 duplicate discriminant values
+## Issue #54 — Duplicate Storage Writes and Redundant Checks in `StarfundEscrow::init`
 
-**Filed as:** [GitHub issue #2](https://github.com/ushpraise/Starfund-contracts/issues/2)
+**Filed as:** [GitHub issue #73](https://github.com/ushpraise/Starfund-contracts/issues/73)
 
-**Category:** Bug · **Size:** L
+**Category:** Refactor / Gas  
+**Priority:** Medium  
+**Suggested Complexity:** Medium  
 
-**Context:** Independent of the *missing* variants in #1–#7, the `EscrowError` enum as currently
-written has real duplication that breaks compilation on its own:
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::init()` (lines 3131–3296)
 
-- **Duplicate variant name** (`E0428`): `AttestationNotRevoked` is defined twice, at
-  `escrow/src/lib.rs:662` (`= 56`) and `:835` (`= 168`). Rust rejects two variants with the same
-  identifier regardless of value — this alone is a hard compile error.
-- **Duplicate discriminant values** (`E0081`, 8 collisions): `MaturityUnchanged`/`NoPendingAdmin`
-  (both `81`), `AdminProposalExpired`/`AdminNonceMismatch` (both `85`),
-  `NewCapNotHigher`/`InboundRecipientBalanceDeltaMismatch` (both `176`), and a 6-way collision
-  across the `Dispute*` family and the `Callback*`/`Registry`/`Beneficiary`/`AdminRecovery` family
-  spanning `240`–`247` (`DisputeBlocksPartialSettle`/`CallbackWrongOrigin` = 240,
-  `DisputeBlocksRefund`/`CallbackWrongNonce` = 241, `DisputeBlocksUnfund`/`CallbackWrongPhase` = 242,
-  `DisputeBlocksSweep`/`CallbackReplayed` = 243, `DisputeOpenUnauthorized`/`CallbackAfterCancellation`
-  = 244, `DisputeCloseUnauthorized`/`CallbackNotFound` = 245, `DisputeAlreadyOpen`/
-  `RegistryImmutableAfterFunding` = 246, `DisputeNotOpen`/`BeneficiaryImmutableAfterFunding` = 247).
+**Problem**  
+In `StarfundEscrow::init()`, initialization parameters are written to storage in lines 3131–3223, and then many of the exact same keys are written a second time in lines 3245–3296:
+1. `DataKey::Version` is written at line 3151 and again at line 3248.
+2. `DataKey::FundingToken` is written at line 3139 and again at line 3251.
+3. `DataKey::Treasury` is written at line 3140 and again at line 3252.
+4. `DataKey::MinContributionFloor` is written at line 3174 and again at line 3257.
+5. `DataKey::UniqueFunderCount` is written at line 3181 and again at line 3261.
+6. `DataKey::RegistryRef` is written at line 3154 and again at line 3266.
+7. `DataKey::MaxPerInvestorCap` is validated and written at line 3187 and validated and written again at lines 3270–3274.
+8. `DataKey::MaxUniqueInvestorsCap` is validated and written at line 3194 and validated and written again at lines 3277–3281.
+9. `DataKey::LegalHoldClearDelay` is written at line 3201 and again at line 3287.
+10. `DataKey::YieldTierTable` is written at line 3160 and again at line 3294.
+11. `DataKey::FundingDeadline` is written at line 3134 *without validation*, and then validated and written again at line 3222.
 
-Per `EscrowError`'s own doc comment ("Codes are append-only: never reuse or renumber a variant"),
-the fix must **renumber one side of each collision to an unused value**, never repurpose a
-colliding number for something else. Coordinate with #1–#7, which are adding new variants to the
-same enum in the same PR wave.
+**Why it matters**  
+This duplicate logic wastes CPU instructions and storage write gas on every escrow deployment on Soroban. Even worse, the first write of `funding_deadline` at line 3134 occurs before any timestamp validation (`deadline > now` and `deadline < maturity`), which creates risk if an error aborts execution after partial writes.
 
-**Files/functions:** `escrow/src/lib.rs::EscrowError` (the whole enum, lines ~578–977).
+**Proposed solution**  
+Consolidate `init()` so each configuration key is validated once and written to instance storage exactly once.
 
-**Acceptance criteria:**
-- Rename the second `AttestationNotRevoked` definition (line 835) to a distinct name (it guards a
-  different call site — `revoke_attestation_digest` on a non-revoked index — than the original at
-  line 662, which guards `unrevoke_attestation_digest`; do not merge them, they mean different
-  things).
-- Renumber one variant in each of the 8 colliding pairs to a value not used anywhere else in the
-  enum (write a small script or test asserting all discriminants are unique — see #33).
-- No existing, still-valid variant's numeric code changes (append-only policy).
-- `cargo build -p starfund_escrow` compiles past the `EscrowError` definition.
+**Acceptance criteria**  
+- Each storage key in `init()` is written exactly once.
+- Validation checks are performed before any storage writes occur.
+- Total CPU instructions and ledger write operations in `init()` are reduced.
 
----
-
-## #9: Duplicate `MAX_INVESTOR_ALLOWLIST_BATCH` constant definition
-
-**Filed as:** [GitHub issue #11](https://github.com/ushpraise/Starfund-contracts/issues/11)
-
-**Category:** Bug · **Size:** S
-
-**Context:** `pub const MAX_INVESTOR_ALLOWLIST_BATCH: u32 = 32;` is defined twice, at
-`escrow/src/lib.rs:162` and again at `:407`, both with the same value. `E0428: the name
-'MAX_INVESTOR_ALLOWLIST_BATCH' is defined multiple times`.
-
-**Files/functions:** `escrow/src/lib.rs`.
-
-**Acceptance criteria:** Delete the redundant definition at line 407 (or 162 — whichever is
-determined to be in the more logical const-grouping location); keep exactly one.
+**Testing**  
+- Run `init` unit tests in `escrow/src/tests/init.rs` to verify configuration values match expected keys.
 
 ---
 
-## #10: Duplicate `AdminProposalCancelled` event struct (byte-identical copy-paste)
+## Issue #55 — `init()` References Non-Existent Error `EscrowError::FundingDeadlineBeyondMaturity`
 
-**Filed as:** [GitHub issue #12](https://github.com/ushpraise/Starfund-contracts/issues/12)
+**Filed as:** [GitHub issue #74](https://github.com/ushpraise/Starfund-contracts/issues/74)
 
-**Category:** Bug · **Size:** S
+**Category:** Bug / Compile-Blocker  
+**Priority:** Critical  
+**Suggested Complexity:** Trivial  
 
-**Context:** `#[contractevent] pub struct AdminProposalCancelled { ... }` is defined twice, at
-`escrow/src/lib.rs:2042` and `:2178`, with identical fields (`name`, `invoice_id` topics,
-`cancelled_pending`). Unlike #11, the two copies are structurally identical — this is pure
-copy-paste, not a divergent-implementation conflict. `docs/escrow-events.md` documents exactly one
-`AdminProposalCancelled` shape, matching both copies.
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::init()` (line 3217)
+- `EscrowError` enum (lines 870)
 
-**Files/functions:** `escrow/src/lib.rs`, `docs/escrow-events.md`.
+**Problem**  
+In `StarfundEscrow::init()` at line 3217, the funding deadline maturity check reads:
+```rust
+if maturity > 0 {
+    ensure(
+        &env,
+        deadline < maturity,
+        EscrowError::FundingDeadlineBeyondMaturity,
+    );
+}
+```
+However, in `EscrowError` (line 870), the error is defined as:
+```rust
+FundingDeadlineAtOrAfterMaturity = 218,
+```
+There is no variant named `FundingDeadlineBeyondMaturity` in `EscrowError`.
 
-**Acceptance criteria:** Delete one of the two identical struct definitions; confirm
-`StarfundEscrow::cancel_pending_admin` still compiles and its existing test(s) pass unchanged.
+**Why it matters**  
+This causes compiler error `E0599: no variant named 'FundingDeadlineBeyondMaturity' found for enum 'EscrowError'`. Any build of `starfund_escrow` with funding deadline validation active fails compilation.
 
----
+**Proposed solution**  
+Update line 3217 to use the defined enum variant:
+```rust
+ensure(
+    &env,
+    deadline < maturity,
+    EscrowError::FundingDeadlineAtOrAfterMaturity,
+);
+```
 
-## #11: Duplicate `CollateralClearedEvt` struct and two divergent `clear_sme_collateral_commitment` implementations
+**Acceptance criteria**  
+- Line 3217 references `EscrowError::FundingDeadlineAtOrAfterMaturity`.
+- Compilation succeeds past line 3217.
 
-**Filed as:** [GitHub issue #13](https://github.com/ushpraise/Starfund-contracts/issues/13)
-
-**Category:** Bug · **Size:** M
-
-**Context:** Both `CollateralClearedEvt` (defined at `escrow/src/lib.rs:2358` and again at `:2598`)
-and `clear_sme_collateral_commitment` (defined at `:3549` and again at `:4483`) exist twice — but
-unlike #10, these two copies **genuinely diverge**:
-- `:3549` returns `Result<(), EscrowError>`, uses `ok_or`/`?`, and publishes a 2-field
-  `CollateralClearedEvt { invoice_id, amount }` with **no topic**.
-- `:4483` returns `()` (panics via `fail()`), and publishes a 5-field
-  `CollateralClearedEvt { name: symbol_short!("coll_clr"), invoice_id, asset, amount, recorded_at }`
-  **with** a `coll_clr` topic.
-
-`docs/escrow-events.md` §`CollateralClearedEvt` documents the `coll_clr` topic and the richer
-field set — i.e. it documents the `:4483` (panic-style) implementation, not the `:3549`
-(`Result`-style) one. That's a strong signal the `:4483` version is canonical and `:3549` is the
-stale duplicate, but this needs a maintainer decision, not a guess, since deleting the wrong one
-removes a `Result<>`-returning API surface that some caller might expect.
-
-**Files/functions:** `escrow/src/lib.rs`, `docs/escrow-events.md`.
-
-**Acceptance criteria:**
-- Maintainer confirms which implementation is canonical (docs point to `:4483`).
-- Delete the other `clear_sme_collateral_commitment` and the other `CollateralClearedEvt`.
-- Existing/re-enabled tests exercise the surviving implementation's exact error and event shape.
-
----
-
-## #12: `external_calls::transfer_into_escrow_with_balance_checks` doesn't exist — call-site name mismatch
-
-**Filed as:** [GitHub issue #14](https://github.com/ushpraise/Starfund-contracts/issues/14)
-
-**Category:** Bug · **Size:** S
-
-**Context:** `escrow/src/lib.rs:6677` calls
-`external_calls::transfer_into_escrow_with_balance_checks(...)`, but `external_calls.rs` only
-defines `transfer_funding_token_inbound_with_balance_checks` (`escrow/src/external_calls.rs:169`).
-`E0425: cannot find function 'transfer_into_escrow_with_balance_checks' in module 'external_calls'`.
-
-**Files/functions:** `escrow/src/lib.rs:6677`, `escrow/src/external_calls.rs:169`.
-
-**Acceptance criteria:** Fix the call site to use the real function name (or rename the function if
-the caller's name is actually the intended public name — pick one, don't leave both). Confirm the
-argument order/types match `transfer_funding_token_inbound_with_balance_checks`'s signature
-exactly (`env, token_addr, investor, to, amount`).
+**Testing**  
+- Verify with `cargo check -p starfund_escrow`.
 
 ---
 
-## #13: Missing `CallbackRegisteredEvent`, `CallbackExecutedEvent`, and `FundingDeadlineUpdated` event struct definitions
+## Issue #56 — `InvestorRefunded` Stored in Instance Storage Violates ADR-007 and Risks Instance Storage Exhaustion
 
-**Filed as:** [GitHub issue #15](https://github.com/ushpraise/Starfund-contracts/issues/15)
+**Filed as:** [GitHub issue #75](https://github.com/ushpraise/Starfund-contracts/issues/75)
 
-**Category:** Bug · **Size:** M
+**Category:** Bug / Storage  
+**Priority:** High  
+**Suggested Complexity:** Medium  
 
-**Context:** Three `#[contractevent]` structs are published but never defined:
-- `register_callback` (`escrow/src/lib.rs:8483`) publishes `CallbackRegisteredEvent`.
-- `execute_callback` (`:8563`) publishes `CallbackExecutedEvent`.
-- `update_funding_deadline` (`:5966`) publishes `FundingDeadlineUpdated`.
+**Location:**
+- `escrow/src/lib.rs`
+- `DataKey::InvestorRefunded(Address)` (line 1338)
+- `StarfundEscrow::refund_impl()` (line 8168)
+- `StarfundEscrow::refund_batch()` (line 8243)
+- `StarfundEscrow::is_investor_refunded()` (line 8366)
+- `docs/adr/ADR-007-storage-key-evolution.md`
 
-The first two **are already documented** in `docs/escrow-events.md` (§`CallbackRegisteredEvent`
-line 291, §`CallbackExecutedEvent` line 303) with their intended topic/field shape — the docs are
-correct and ahead of the code; only the struct definitions are missing from `lib.rs`.
-`FundingDeadlineUpdated` is not documented anywhere (grep of `docs/` and `.kiro/` returns zero
-hits) and is a different event from the already-implemented, already-documented
-`FundingDeadlineExtended` (`escrow/src/lib.rs:2229`, published by the separate
-`extend_funding_deadline` entrypoint at `:7565`) — confirm with the maintainer whether
-`update_funding_deadline` and `extend_funding_deadline` are supposed to be two distinct
-entrypoints/events or the former is dead code that should be removed instead.
+**Problem**  
+In `refund_impl` (line 8168):
+```rust
+env.storage()
+    .instance()
+    .set(&DataKey::InvestorRefunded(investor.clone()), &true);
+```
+`DataKey::InvestorRefunded(Address)` is stored in `instance()` storage. In Soroban, all instance storage keys reside in a single ledger entry loaded in its entirety whenever the contract is invoked, with a hard protocol limit of 64KB. ADR-007 Rule 5 explicitly mandates:
+> "Per-investor data MUST be stored in persistent storage to prevent instance storage growth from exceeding ledger entry size limits."
 
-**Files/functions:** `escrow/src/lib.rs`, `docs/escrow-events.md`.
+All other per-investor keys (`InvestorContribution`, `InvestorEffectiveYield`, `InvestorClaimNotBefore`, `InvestorClaimed`, `InvestorAllowlisted`) correctly reside in persistent storage.
 
-**Acceptance criteria:**
-- Define `CallbackRegisteredEvent`/`CallbackExecutedEvent` matching `docs/escrow-events.md`'s
-  documented field/topic shape exactly.
-- Resolve `update_funding_deadline` vs `extend_funding_deadline` duplication (either document and
-  implement `FundingDeadlineUpdated` properly, or remove `update_funding_deadline` in favor of the
-  already-working `extend_funding_deadline`).
+**Why it matters**  
+In escrows with many participants, writing an unbounded number of `InvestorRefunded(Address)` keys into instance storage bloats the instance entry. Once the 64KB limit is exceeded, any transaction attempting to write or load instance storage will fail with a Soroban Host storage error, permanently bricking refund processing.
 
----
+**Proposed solution**  
+1. Store `DataKey::InvestorRefunded(Address)` in `persistent()` storage instead of `instance()` storage.
+2. In `bump_ttl()`, include `DataKey::InvestorRefunded` when extending persistent TTL for investors.
 
-## #14: `set_investor_allowlisted` references undefined local `was_allowlisted`
+**Acceptance criteria**  
+- `InvestorRefunded` reads and writes use `env.storage().persistent()`.
+- Instance storage entry size remains constant regardless of the number of refunded investors.
+- ADR-007 Rule 5 compliance is restored.
 
-**Filed as:** [GitHub issue #16](https://github.com/ushpraise/Starfund-contracts/issues/16)
-
-**Category:** Bug · **Size:** S
-
-**Context:** `escrow/src/lib.rs:5689` and `:5691` use `was_allowlisted` to decide whether to
-push/remove the address from `DataKey::AllowlistIndex`, but no such binding exists anywhere in
-`set_investor_allowlisted` (`escrow/src/lib.rs:5675`). `E0425: cannot find value 'was_allowlisted'
-in this scope`.
-
-**Files/functions:** `escrow/src/lib.rs::set_investor_allowlisted`.
-
-**Acceptance criteria:** Add `let was_allowlisted = Self::is_investor_allowlisted(env.clone(),
-investor.clone());` (read **before** the persistent-storage write that follows it) so the index
-maintenance logic at lines 5689/5691 has the previous state to compare against. Add a test
-covering: allowlisting a not-yet-indexed address (pushes), re-allowlisting an already-indexed
-address (no duplicate push), and de-allowlisting (removes from index).
+**Testing**  
+- Add a test verifying `env.storage().persistent().has(&DataKey::InvestorRefunded(investor))` is `true` after refund.
 
 ---
 
-## #15: `fund_impl`'s tiered-commitment branch references undefined `res`/`resolution`
+## Issue #57 — `unfund()` Emits Misleading `OverWithdrawal` on Non-Positive Amounts and Misplaces Validation
 
-**Filed as:** [GitHub issue #17](https://github.com/ushpraise/Starfund-contracts/issues/17)
+**Filed as:** [GitHub issue #76](https://github.com/ushpraise/Starfund-contracts/issues/76)
 
-**Category:** Bug · **Size:** M
+**Category:** Bug  
+**Priority:** Low  
+**Suggested Complexity:** Trivial  
 
-**Context:** Inside `fund_impl`'s `else` branch (the `fund_with_commitment` first-deposit path,
-`escrow/src/lib.rs:6605-6623`), the code trails off with a bare `res` expression (line 6620) with
-no prior binding, then immediately uses `resolution.effective_yield_bps` / `.matched_lock_secs`
-(lines 6622-6623) — also never bound. This is the exact tier-selection logic documented in
-`StarfundEscrow::preview_yield_tier` (`:4463`, which correctly calls
-`Self::effective_yield_for_commitment(&env, escrow.yield_bps, lock)`), suggesting the equivalent
-call inside `fund_impl` was accidentally deleted, leaving only its two downstream uses.
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::unfund()` (lines 8298–8308)
 
-**Files/functions:** `escrow/src/lib.rs::fund_impl` (the `else` branch around lines 6605-6623),
-compare against `preview_yield_tier` (`:4463`).
+**Problem**  
+In `StarfundEscrow::unfund()`, line 8298 first executes:
+```rust
+let contribution: i128 = Self::get_persistent_investor_contribution(&env, investor.clone());
+ensure(&env, amount <= contribution, EscrowError::OverWithdrawal);
+let remaining_contribution = contribution
+    .checked_sub(amount)
+    .unwrap_or_else(|| fail(&env, EscrowError::OverWithdrawal));
+```
+Then, at line 8306, it checks:
+```rust
+if amount <= 0 {
+    fail(&env, EscrowError::OverWithdrawal);
+}
+```
+If a caller submits `amount = 0` or a negative amount, the contract fails with `EscrowError::OverWithdrawal` rather than an explicit error indicating that the unfund amount must be positive. Furthermore, the non-positive check is placed *after* checking contribution bounds.
 
-**Acceptance criteria:**
-- Reconstruct the missing `let resolution = Self::effective_yield_for_commitment(&env,
-  escrow.yield_bps, committed_lock_secs);` call (or equivalent) so `res`/`resolution` resolve.
-- Add a test asserting `fund_with_commitment`'s first-deposit tier selection matches what
-  `preview_yield_tier` would have previewed for the same `(amount, lock)` pair — this is exactly
-  the kind of divergence this bug could otherwise reintroduce silently.
+**Why it matters**  
+Failing with `OverWithdrawal` when `amount == 0` is misleading to API callers and off-chain clients, who expect `OverWithdrawal` to signify withdrawing more than their deposited principal.
 
----
+**Proposed solution**  
+1. Hoist the `amount > 0` check to the top of `unfund()` before reading storage.
+2. Add and emit a dedicated typed error `EscrowError::UnfundAmountNotPositive = 239` (or reuse `TransferAmountNotPositive`).
 
-## #16: `propose_admin` and `transfer_admin` reference undefined locals (`validity_window_secs`, `invoice_id`)
+**Acceptance criteria**  
+- Calling `unfund` with `amount <= 0` immediately reverts with `EscrowError::UnfundAmountNotPositive`.
+- Validations occur before storage lookups.
 
-**Filed as:** [GitHub issue #18](https://github.com/ushpraise/Starfund-contracts/issues/18)
-
-**Category:** Bug · **Size:** S
-
-**Context:** Two related, small breaks in the admin-handover code:
-- `propose_admin(env: Env, new_admin: Address, expected_nonce: u32) -> Address`
-  (`escrow/src/lib.rs:7859`) has no `validity_window_secs` parameter, but its body at line 7886
-  reads `validity_window_secs.unwrap_or(DEFAULT_ADMIN_PROPOSAL_VALIDITY_SECS)` as if it were an
-  `Option<u64>` parameter.
-- `transfer_admin` (the `#[deprecated]` wrapper at `:7977`) already binds `let escrow =
-  Self::get_escrow(env.clone());` at line 7985, but line 7989 publishes
-  `DeprecatedTransferAdminUsed { invoice_id, ... }` using a bare `invoice_id` instead of
-  `escrow.invoice_id.clone()`.
-
-**Files/functions:** `escrow/src/lib.rs::propose_admin`, `::transfer_admin`.
-
-**Acceptance criteria:**
-- Add `validity_window_secs: Option<u64>` to `propose_admin`'s signature (matching the doc comment
-  on `DEFAULT_ADMIN_PROPOSAL_VALIDITY_SECS` at line ~469, which already describes this parameter).
-  Update the `#[deprecated]` `transfer_admin` call site accordingly.
-- Fix `transfer_admin`'s event publish to use `escrow.invoice_id.clone()`.
-- `cargo build` passes; re-enable/add a test for a non-default validity window.
+**Testing**  
+- Add test verifying `client.try_unfund(&investor, &0)` returns `UnfundAmountNotPositive`.
 
 ---
 
-## #17: `escrow/src/tests/coverage.rs` has an unclosed-delimiter brace mismatch
+## Issue #58 — `unfund()` to Zero Desynchronizes `InvestorIndex` and `UniqueFunderCount`, Corrupting Re-Funding
 
-**Filed as:** [GitHub issue #1](https://github.com/ushpraise/Starfund-contracts/issues/1)
+**Filed as:** [GitHub issue #77](https://github.com/ushpraise/Starfund-contracts/issues/77)
 
-**Category:** Bug · **Size:** M
+**Category:** Bug  
+**Priority:** High  
+**Suggested Complexity:** Medium  
 
-**Context:** `rustc` reports `error: this file contains an unclosed delimiter` rooted at
-`typed_error_codes_cover_basic_escrow_guards` (starts `escrow/src/tests/coverage.rs:29`), with the
-file's final `}` at line 4254 unable to close it — a missing (or extra) brace somewhere inside that
-function swallows the rest of the 4254-line file into a single function body, which is why `cargo
-test` currently reports only 11 errors for this file (it can't get far enough to report the real
-count).
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::unfund()` (lines 8319–8330)
+- `StarfundEscrow::fund_impl()` (lines 6651–6665)
 
-**Files/functions:** `escrow/src/tests/coverage.rs` (whole file, root cause inside
-`typed_error_codes_cover_basic_escrow_guards`).
+**Problem**  
+When an investor calls `unfund()` to withdraw their entire principal balance, `remaining_contribution == 0`. At lines 8320–8329:
+```rust
+if remaining_contribution == 0 {
+    let cur: u32 = env.storage().instance().get(&keys::unique_funder_count()).unwrap_or(0);
+    env.storage().instance().set(&keys::unique_funder_count(), &cur.saturating_sub(1));
+}
+```
+The contract decrements `UniqueFunderCount`. However:
+1. The investor address is **not removed** from `InvestorIndex` (`keys::investor_index()`).
+2. `InvestorEffectiveYield` and `InvestorClaimNotBefore` are not cleared.
+3. If this investor deposits again later, `prev == 0` is true in `fund_impl`. `fund_impl` increments `UniqueFunderCount` and executes `index.push_back(investor.clone())`.
 
-**Acceptance criteria:** Locate and fix the actual brace mismatch (likely bisectable by
-temporarily truncating the file and reintroducing sections). `cargo test -p starfund_escrow`
-parses `coverage.rs` as multiple distinct test functions again. This must land before any of the 6
-`#[ignore]`d tests in this file (see #33) can be individually triaged.
+**Why it matters**  
+`InvestorIndex` now contains duplicate entries for the same investor address. Any caller paginating through `get_investors()` or `get_funding_records()` will receive duplicate records for that investor. Furthermore, `InvestorIndex.len()` will exceed `UniqueFunderCount`, breaking the invariant `investor_index.len() == unique_funder_count`.
 
----
+**Proposed solution**  
+When `remaining_contribution == 0` in `unfund()`:
+1. Remove `investor` from `InvestorIndex` (or retain a tombstone / set structure).
+2. Clean up or reset `InvestorEffectiveYield` and `InvestorClaimNotBefore` if returning investors should re-qualify for tiers.
 
-## #18: `release()` has a redundant duplicate pause check and raw `.unwrap()`s instead of typed errors
+**Acceptance criteria**  
+- Unfunding to 0 and re-funding does not create duplicate entries in `InvestorIndex`.
+- `InvestorIndex.len()` accurately reflects `UniqueFunderCount`.
 
-**Filed as:** [GitHub issue #10](https://github.com/ushpraise/Starfund-contracts/issues/10)
-
-**Category:** Bug · **Size:** S
-
-**Context:** In `StarfundEscrow::release` (`escrow/src/lib.rs:6900-6923`):
-- Lines 6903-6908 check the same condition twice: an inline
-  `ensure(&env, !Self::paused_active(&env), EscrowError::PausedBlocksRelease)` immediately followed
-  by `guard_not_paused(&env, EscrowError::PausedBlocksRelease)`. Harmless but dead weight, and a
-  sign the function was assembled from two different snippets.
-- Line 6912: `env.storage().instance().get(&DataKey::Escrow).unwrap()` panics with a generic
-  message instead of the `EscrowError::EscrowNotInitialized` pattern every other entrypoint uses
-  (`.unwrap_or_else(|| panic_with_error!(&env, EscrowError::EscrowNotInitialized))`).
-- Line 6923: `escrow.funded_amount.checked_sub(released_amount).unwrap()` discards the checked
-  result via `.unwrap()` instead of `.unwrap_or_else(|| fail(&env, EscrowError::...))`, so a
-  theoretical underflow panics without a stable numeric error code — contradicting the crate's own
-  documented policy on `EscrowError` ("client SDKs should branch on the numeric code rather than
-  legacy panic strings").
-
-**Files/functions:** `escrow/src/lib.rs::release`.
-
-**Acceptance criteria:**
-- Remove the redundant inline pause check; keep the `guard_not_paused` helper call (matches every
-  other entrypoint's style).
-- Replace both raw `.unwrap()`s with typed-error equivalents consistent with the rest of the file.
-- Existing/new tests confirm the typed error codes, not panic message substrings.
+**Testing**  
+- Add test: Investor A funds -> unfunds to 0 -> funds again. Assert `client.get_investors(0, 10).len() == 1`.
 
 ---
 
-## #19: `FeeSchedule` subsystem is fully implemented but never consulted by `withdraw()` or `release()`
+## Issue #59 — `bump_ttl()` Panics on Non-Existent Persistent Keys and Contains Duplicate Loops
 
-**Filed as:** [GitHub issue #19](https://github.com/ushpraise/Starfund-contracts/issues/19)
+**Filed as:** [GitHub issue #78](https://github.com/ushpraise/Starfund-contracts/issues/78)
 
-**Category:** Bug · **Size:** M
+**Category:** Bug  
+**Priority:** High  
+**Suggested Complexity:** Medium  
 
-**Context:** `FeeSchedule`/`FeeScheduleStorageKey`/`FeeScheduleError` (`escrow/src/lib.rs:339-368`)
-back a complete admin-gated subsystem — `submit_fee_schedule` (`:2667`), `activate_fee_schedule`
-(`:2709`), `get_active_fee_schedule`/`get_pending_fee_schedule`/`get_previous_fee_schedule`
-(`:2736`, `:2750`, `:2762`) — that reads and writes `FeeScheduleStorageKey::{Active,Pending,Previous}`
-exclusively within its own functions. Neither `withdraw()` (which applies the **separate**,
-immutable, init-time `DataKey::ProtocolFeeBps` per the module rustdoc's "Immutable protocol fee"
-section) nor `release()` (which applies **no** fee at all — see #46) ever reads
-`FeeScheduleStorageKey::Active`. The subsystem compiles, is fully testable, and returns real data
-from `get_active_fee_schedule()` — but activating a schedule has **zero effect** on any actual
-token transfer.
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::bump_ttl()` (lines 7779–7820)
 
-**Files/functions:** `escrow/src/lib.rs:339-368, 2667-2770` (`FeeSchedule` module),
-`escrow/src/lib.rs::withdraw`, `::release`.
+**Problem**  
+In `StarfundEscrow::bump_ttl()`, the implementation contains two sequential loops over `allowlisted.iter()`:
+1. Lines 7780–7789: Iterates over `allowlisted` and extends `InvestorAllowlisted`, and calls `env.storage().instance().extend_ttl(ttl, ttl)` on every single iteration inside the loop.
+2. Lines 7795–7819: Iterates over `allowlisted` a second time, extends `InvestorAllowlisted` a second time, and unconditionally calls:
+```rust
+env.storage().persistent().extend_ttl(&DataKey::InvestorContribution(addr.clone()), ttl, ttl);
+env.storage().persistent().extend_ttl(&DataKey::InvestorEffectiveYield(addr.clone()), ttl, ttl);
+env.storage().persistent().extend_ttl(&DataKey::InvestorClaimNotBefore(addr.clone()), ttl, ttl);
+env.storage().persistent().extend_ttl(&DataKey::InvestorClaimed(addr.clone()), ttl, ttl);
+```
+In Soroban SDK 25, calling `extend_ttl` on a persistent storage key that **does not exist** causes a host panic.
 
-**Acceptance criteria:** Maintainer decision required — either (a) wire `FeeScheduleStorageKey::Active`
-into the actual disbursement calculation in `withdraw()` (and/or `release()`, pending #46's
-resolution), with a test asserting an activated schedule changes the SME's net payout; or (b) if
-this is deliberately a forward-looking/staged API not yet activated, add an explicit doc comment
-on the module and a test asserting `withdraw()`'s payout is unaffected by any activated schedule,
-so the disconnect is intentional and documented rather than silent.
+**Why it matters**  
+An allowlisted investor who has not yet funded has no `InvestorContribution`, `InvestorEffectiveYield`, or `InvestorClaimNotBefore` key. Similarly, an investor who has not yet claimed has no `InvestorClaimed` key. Calling `bump_ttl()` with any such address immediately panics and reverts the transaction. Furthermore, calling `instance().extend_ttl()` repeatedly inside a loop is redundant.
 
----
+**Proposed solution**  
+1. Call `instance().extend_ttl(ttl, ttl)` once outside the loop.
+2. Guard every persistent `extend_ttl` call with `if env.storage().persistent().has(&key)`.
+3. Consolidate the two redundant loops into a single loop.
 
-## New Features
+**Acceptance criteria**  
+- `bump_ttl` safely extends persistent keys for allowlisted addresses that have not yet deposited or claimed.
+- `instance().extend_ttl()` is called exactly once.
 
-## #20: Add `raise_min_contribution_floor` and `lower_max_per_investor` (missing symmetric counterparts)
-
-**Category:** Feature · **Size:** M
-
-**Context:** `lower_min_contribution_floor` (`escrow/src/lib.rs:6090`) exists but there is no
-`raise_min_contribution_floor`. `raise_max_per_investor` (`:6139`) exists but there is no
-`lower_max_per_investor`. Both configured caps are otherwise only adjustable in one direction —
-once an admin lowers the contribution floor or raises the per-investor cap, there's no on-chain way
-to reverse course without redeploying.
-
-**Files/functions:** `escrow/src/lib.rs::lower_min_contribution_floor`,
-`::raise_max_per_investor` (as the pattern to mirror).
-
-**Acceptance criteria:**
-- Add `raise_min_contribution_floor(env, new_floor) -> i128` mirroring `lower_min_contribution_floor`'s
-  guard shape (status-open guard, strictly-higher check, event emission).
-- Add `lower_max_per_investor(env, new_cap) -> i128` mirroring `raise_max_per_investor`.
-- New typed errors as needed (coordinate discriminants with #6, which touches the same functions'
-  siblings).
-- Update `docs/escrow-investor-caps.md` and `docs/escrow-lifecycle.md`'s valid-transitions table.
+**Testing**  
+- Add unit test calling `bump_ttl` with allowlisted addresses that have zero deposits, verifying no host panic occurs.
 
 ---
 
-## #21: Add `lower_maturity_max_horizon` with a guard against invalidating in-flight maturities
+## Issue #60 — Missing Implementation for `StarfundEscrow::batch_bump_ttl` (Orphaned Doc Comment)
 
-**Category:** Feature · **Size:** M
+**Filed as:** [GitHub issue #79](https://github.com/ushpraise/Starfund-contracts/issues/79)
 
-**Context:** `raise_maturity_max_horizon` (`escrow/src/lib.rs:7684`) exists; there is no way to
-lower `DataKey::MaturityMaxHorizon` back down once raised. Unlike #20's pair, this one needs an
-extra safety constraint: lowering the horizon must not retroactively invalidate an already-set
-`InvoiceEscrow::maturity` that was valid under the old (higher) horizon — `validate_maturity_bounds`
-(`escrow/src/lib.rs:1206`) is only invoked at `init`/`update_maturity` time, so a horizon lowered
-after maturity is set would silently leave the escrow in a state that couldn't be `init`'d fresh
-under the new rule, which is a soft inconsistency worth guarding against explicitly rather than
-leaving implicit.
+**Category:** Bug / DevEx  
+**Priority:** Medium  
+**Suggested Complexity:** Medium  
 
-**Files/functions:** `escrow/src/lib.rs::raise_maturity_max_horizon`,
-`::validate_maturity_bounds`.
+**Location:**
+- `escrow/src/lib.rs`
+- Lines 7822–7859
 
-**Acceptance criteria:**
-- Add `lower_maturity_max_horizon(env, new_horizon) -> u64`, admin-gated, strictly-lower check.
-- Explicit guard: reject a new horizon that would put the escrow's **current** `maturity` outside
-  `now + new_horizon` (typed error), or document why that's intentionally not checked.
-- Test: set maturity near the current horizon ceiling, lower the horizon, confirm the guard fires
-  (or confirm+document the alternative).
+**Problem**  
+At lines 7822–7858, there is an extensive 37-line doc comment documenting `StarfundEscrow::batch_bump_ttl(env: Env, keys: Vec<DataKey>)`:
+`/// Extend TTL for a bounded set of storage keys in one admin-authenticated call.`
+`/// This is the admin-gated counterpart to [StarfundEscrow::bump_ttl]...`
+`/// Bounds: MAX_BUMP_TTL_BATCH...`
+Immediately following this doc comment at line 7859 is:
+```rust
+pub fn propose_admin(env: Env, new_admin: Address, expected_nonce: u32) -> Address {
+```
+The actual implementation of `batch_bump_ttl` is completely missing from the contract, leaving its documentation orphaned on top of `propose_admin`.
 
----
+**Why it matters**  
+The documented administrative batch TTL extension functionality cannot be called by operators. The misplaced doc comment also misleads developers and documentation generators into displaying `batch_bump_ttl` documentation for `propose_admin`.
 
-## #22: Add `get_released_amount()` public read view
+**Proposed solution**  
+1. Implement `pub fn batch_bump_ttl(env: Env, keys: Vec<DataKey>)` under its doc comment, respecting `MAX_BUMP_TTL_BATCH`, admin authorization, and `.has()` guards.
+2. Ensure `propose_admin` has its own dedicated doc comment.
 
-**Category:** Feature · **Size:** S
+**Acceptance criteria**  
+- `batch_bump_ttl` is implemented as an admin-authorized entrypoint accepting a bounded `Vec<DataKey>`.
+- `propose_admin` has accurate doc comments.
 
-**Context:** Once #2/#3 land, `release()` maintains a running total under `DataKey::ReleasedAmount`
-via `keys::released_amount()`, but there is no public getter for it — contrast with
-`get_distributed_principal()` (`escrow/src/lib.rs:8374`), which is the equivalent read view for the
-refund-side ledger.
-
-**Files/functions:** `escrow/src/lib.rs` (add near `get_distributed_principal`, `:8374`).
-
-**Acceptance criteria:** Add `pub fn get_released_amount(env: Env) -> i128` reading
-`keys::released_amount()` with `.unwrap_or(0)`, matching `get_distributed_principal`'s style. Add
-a test asserting it reflects cumulative `release()` calls correctly across partial and final
-releases.
+**Testing**  
+- Add unit tests verifying `batch_bump_ttl` successfully extends TTL for valid instance and persistent keys.
 
 ---
 
-## #23: Add `unfund_batch` to match the `_batch` pattern used by every other value-moving entrypoint
+## Issue #61 — Unrealistic 1s/Ledger Assumptions in TTL Constants Exceed Soroban `max_entry_ttl`
 
-**Category:** Feature · **Size:** M
+**Filed as:** [GitHub issue #80](https://github.com/ushpraise/Starfund-contracts/issues/80)
 
-**Context:** `fund_batch` (`MAX_FUND_BATCH`), `refund_batch` (`MAX_REFUND_BATCH`), and
-`settle_batch` (`MAX_SETTLE_BATCH`) all have batch siblings bounded by their own `MAX_*` constant.
-`unfund` (`escrow/src/lib.rs:8277`, added per `.kiro/specs/unfund-entrypoint/`) does not — an
-admin or integrator wanting to process multiple investors' unfund requests in one transaction has
-no batch path, unlike every comparable value-moving entrypoint.
+**Category:** Bug / Storage  
+**Priority:** High  
+**Suggested Complexity:** Low  
 
-**Files/functions:** `escrow/src/lib.rs::unfund` (pattern to extend), `::fund_batch`,
-`::refund_batch` (patterns to mirror for all-or-nothing batch semantics and duplicate-address
-rejection).
+**Location:**
+- `escrow/src/lib.rs`
+- Lines 483, 492, 494–496
 
-**Acceptance criteria:**
-- Add `unfund_batch(env, entries: Vec<(Address, i128)>) -> InvoiceEscrow`, bounded by a new
-  `MAX_UNFUND_BATCH` constant, atomic (all-or-nothing), rejecting duplicate investor addresses in
-  one call (mirroring `FundingBatchDuplicateInvestor`'s pattern).
-- Each entry requires that specific investor's `require_auth()` (matching `unfund`'s single-call
-  semantics — batch should not let one signer unfund on behalf of another).
-- Tests: happy path, empty batch, over-limit batch, duplicate-address rejection, partial failure
-  rolls back atomically.
+**Problem**  
+The TTL extension constants are calculated using an incorrect assumption of 1 second per ledger:
+```rust
+pub const INSTANCE_TTL_MIN_EXTENSION_LEDGERS: u32 = 60 * 60; // Approx. 1h at 1 ledger/sec.
+pub const TTL_ACTIVE_ESCROW_LEDGERS: u32 = 90 * 24 * 60 * 60; // 7,776,000 ledgers
+pub const TTL_DISPUTED_ESCROW_LEDGERS: u32 = 180 * 24 * 60 * 60; // 15,552,000 ledgers
+pub const TTL_TERMINAL_ESCROW_LEDGERS: u32 = 30 * 24 * 60 * 60; // 2,592,000 ledgers
+```
+Stellar ledgers close approximately every 5 seconds, not 1 second.
+More critically, on the Stellar Soroban network, the protocol parameter `max_entry_ttl` is 3,110,400 ledgers (~180 days at 5s/ledger). Passing 15,552,000 or 7,776,000 ledgers to `extend_ttl` exceeds `max_entry_ttl`.
 
----
+**Why it matters**  
+In Soroban, calling `extend_ttl(threshold, extend_to)` where `extend_to > max_entry_ttl` causes host execution errors or clamping failures depending on the Soroban host environment.
 
-## Documentation
+**Proposed solution**  
+Recalculate all TTL constants assuming 5 seconds per ledger (12 ledgers per minute, 720 per hour, 17,280 per day):
+- Active escrow (90 days): `90 * 17_280 = 1,555,200` ledgers.
+- Disputed escrow (180 days): `180 * 17_280 = 3,110,400` ledgers (exactly `max_entry_ttl`).
+- Terminal escrow (30 days): `30 * 17_280 = 518,400` ledgers.
+- 1 hour minimum: `720` ledgers.
 
-## #24: `.kiro/specs/unfund-entrypoint/requirements.md` R11's error table doesn't match the shipped implementation
+**Acceptance criteria**  
+- All TTL constants are calibrated for 5-second ledger closing times.
+- No TTL constant exceeds the Stellar protocol ceiling of 3,110,400 ledgers.
 
-**Category:** Documentation · **Size:** S
-
-**Context:** `requirements.md` §R11 specifies error variants `EscrowNotOpen` (code 165),
-`OverWithdrawal` (166), `LegalHoldActive` (167). The actual shipped `unfund`
-(`escrow/src/lib.rs:8277`) uses `UnfundEscrowNotOpen` (220), `OverWithdrawal` (221),
-`UnfundLegalHoldActive` (222) — different names **and** different codes — plus an additional
-`DisputeBlocksUnfund` (242) guard (`guard_not_disputed`, line 8288) that isn't in the spec at all.
-`docs/escrow-lifecycle.md` (§"Investor unfund path", lines 214-233) **correctly** documents the
-shipped names/codes — only the original `.kiro` spec is stale.
-
-**Files/functions:** `.kiro/specs/unfund-entrypoint/requirements.md` §R11.
-
-**Acceptance criteria:** Update R11's table to match `escrow/src/lib.rs`'s actual variant names and
-codes, and add a row for the `DisputeBlocksUnfund` guard the implementation added beyond the
-original spec.
+**Testing**  
+- Assert in tests that `get_lifecycle_ttl(&escrow) <= 3_110_400`.
 
 ---
 
-## #25: Security checklist's Authentication Matrix and Trusted Addresses sections omit the `payer` role entirely
+## Issue #62 — Triplicate Divergent Dispute Representations Allow Dispute Check Bypass in `close_escrow`
 
-**Category:** Documentation · **Size:** M
+**Filed as:** [GitHub issue #81](https://github.com/ushpraise/Starfund-contracts/issues/81)
 
-**Context:** `InvoiceEscrow::payer` (`escrow/src/lib.rs:1526`) is a first-class field ("must
-authorize funding"), defaults to `admin` at `init` (line 3233), has its own dual-auth rotation
-entrypoint (`rotate_payer`, `:3689`), and is required-auth on **every** `fund`/`fund_with_commitment`/
-`fund_batch` call via `fund_impl`'s `escrow.payer.require_auth()` (line 6583). None of this appears
-in `docs/escrow-security-checklist.md`'s §1 Authentication Matrix (which lists `fund` as
-investor-only) or §2 Trusted Addresses (which covers admin/SME/treasury/funding-token/registry but
-not payer). See also #46 for the security implications this doc gap is hiding.
+**Category:** Bug / Security  
+**Priority:** High  
+**Suggested Complexity:** Medium  
 
-**Files/functions:** `docs/escrow-security-checklist.md` §1, §2;
-`escrow/src/lib.rs::fund_impl`, `::rotate_payer`.
+**Location:**
+- `escrow/src/lib.rs`
+- `close_escrow()` (line 285)
+- `is_dispute_active()` (line 3860)
+- `open_dispute()` (line 3899)
+- `get_lifecycle_ttl()` (line 499)
 
-**Acceptance criteria:** Add a `payer` row to §1's Authentication Matrix for `fund`/
-`fund_with_commitment`/`fund_batch`/`rotate_payer`, and a §2.x "Payer" subsection describing its
-default-to-admin initialization, its rotation mechanics, and its risk profile (cross-reference
-#46/#47).
+**Problem**  
+The codebase maintains three separate, unsynchronized representations of dispute state:
+1. `DataKey::DisputeActive` (bool) — written by `open_dispute()` and read by `is_dispute_active()`.
+2. `DataKey::Dispute` (bool) — read by `close_escrow()` (`env.storage().instance().get(&DataKey::Dispute)`).
+3. `InvoiceEscrow::dispute_active` (bool) — read by `get_lifecycle_ttl()`.
+When `open_dispute()` is called, it sets `DataKey::DisputeActive = true`. It **never** sets `DataKey::Dispute` and **never** updates `escrow.dispute_active`.
 
----
+**Why it matters**  
+1. `close_escrow()` checks `DataKey::Dispute`. Because `open_dispute()` wrote to `DataKey::DisputeActive`, `close_escrow()` never detects that a dispute is active, allowing an admin to close an escrow undergoing active dispute resolution!
+2. `get_lifecycle_ttl()` checks `escrow.dispute_active` to extend TTL to the disputed horizon. Because `escrow.dispute_active` is never updated by `open_dispute`, disputed escrows do not receive the extended dispute TTL.
 
-## #26: Two contributors' absolute local filesystem paths are committed in docs, one of them broken across 5 links
+**Proposed solution**  
+Unify all dispute state under `DataKey::DisputeActive` and update `escrow.dispute_active` atomically in `open_dispute()` and `close_dispute()`. Eliminate the unused `DataKey::Dispute`.
 
-**Category:** Documentation · **Size:** S
+**Acceptance criteria**  
+- `close_escrow()` checks `is_dispute_active()`.
+- `open_dispute()` updates `DataKey::DisputeActive` and `escrow.dispute_active` in lockstep.
 
-**Context:**
-- `docs/escrow-security-checklist.md` line ~299 links to
-  `file:///home/demigodjayydy/Desktop/Starfund-contracts/escrow/src/tests/admin.rs` — an absolute
-  path on one contributor's machine, broken for everyone else, and it leaks that contributor's
-  local username/directory layout.
-- `docs/escrow-cancellation-refunds.md` lines 12, 20, 21, 30, 44 link to
-  `file:///c:/Users/enwer/OneDrive/Documents/Code%20Projects/OS%20Contributions/Starfund-contracts/...`
-  — a second contributor's absolute Windows path, broken the same way, in 5 separate links.
-
-**Files/functions:** `docs/escrow-security-checklist.md`, `docs/escrow-cancellation-refunds.md`.
-
-**Acceptance criteria:** Replace all 6 links with relative repo paths (e.g.
-`../escrow/src/tests/admin.rs`) or GitHub permalinks. Since §6's own line-number references are
-noted as needing "re-audit after refactors," take this pass as an opportunity to spot-check that
-the line numbers those links point at are still accurate (see #27).
+**Testing**  
+- Add test: open dispute -> call `close_escrow()`. Assert it reverts with `CloseError::ActiveDispute`.
 
 ---
 
-## #27: Security checklist's own "re-audit after refactors" trigger has been missed — line-number references and entrypoint tables are stale
+## Issue #63 — Missing Events for `open_dispute` and `close_dispute`
 
-**Category:** Documentation · **Size:** M
+**Filed as:** [GitHub issue #82](https://github.com/ushpraise/Starfund-contracts/issues/82)
 
-**Context:** `docs/escrow-security-checklist.md` §6 states "Line numbers refer to `escrow/src/lib.rs`
-at schema version 6; re-audit after refactors." `SCHEMA_VERSION` is still 6, but `lib.rs` has grown
-substantially since this table was last accurate — none of `release`, `partial_settle`,
-`rotate_payer`, `unfund`, the `FeeSchedule` subsystem, or the `PauseState`/`PauseScope` system (see
-#28) appear in §1's Authentication Matrix, §2's Trusted Addresses, or §6's Entrypoint checklist
-table. The line numbers cited for existing rows (e.g. "`fund` / `fund_with_commitment` ... line
-~1119") should also be spot-checked against current line numbers.
+**Category:** Bug / Events  
+**Priority:** Medium  
+**Suggested Complexity:** Low  
 
-**Files/functions:** `docs/escrow-security-checklist.md` (whole document).
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::open_dispute()` (lines 3878–3903)
+- `StarfundEscrow::close_dispute()` (lines 3905–3940)
 
-**Acceptance criteria:** Add rows to §1, §2, and §6 for `release`, `partial_settle`, `rotate_payer`,
-`unfund`, and `FeeSchedule`; verify/update every cited line number; note this doc's line-number
-citations drift quickly and consider switching to function-name-only references (no line numbers)
-to reduce future maintenance burden — raise as an open question for the maintainer rather than
-changing the doc's format unilaterally.
+**Problem**  
+`open_dispute` and `close_dispute` perform state transitions that freeze or unfreeze value movement across the contract. However, neither function emits any contract event.
 
----
+**Why it matters**  
+Off-chain indexers, liquidity providers, and SME dashboards have no event stream to observe when an escrow enters or exits a dispute. The only way to detect a dispute is by continually polling `is_dispute_active()`.
 
-## #28: Pause-specific docs (`pauser-states.md`, `pause-auth.md`) don't mention the scoped `PauseState`/`PauseScope` system
+**Proposed solution**  
+Define and emit:
+```rust
+#[contractevent]
+pub struct DisputeOpenedEvt {
+    #[topic]
+    pub name: Symbol,
+    #[topic]
+    pub invoice_id: Symbol,
+    pub opened_by: Address,
+    pub opened_at: u64,
+}
 
-**Category:** Documentation · **Size:** M
+#[contractevent]
+pub struct DisputeClosedEvt {
+    #[topic]
+    pub name: Symbol,
+    #[topic]
+    pub invoice_id: Symbol,
+    pub closed_by: Address,
+    pub closed_at: u64,
+    pub resolved: bool,
+}
+```
 
-**Context:** `escrow/src/lib.rs:1431-1520` implements a full scoped-pause upgrade (`PauseScope`
-enum, `PauseState` struct with a `reason` field, stored under `DataKey::PauseState`) beyond the
-simple boolean `DataKey::Paused` flag that `docs/pauser-states.md` and `docs/pause-auth.md`
-describe exclusively. Neither doc mentions `PauseState`, `PauseScope`, or the interaction between a
-legacy boolean-only pause (`Paused` set, no `PauseState` recorded) and a scoped one — which
-`get_effective_pause_scope` (referenced at `:2840`) explicitly has logic to distinguish.
+**Acceptance criteria**  
+- `open_dispute` emits `DisputeOpenedEvt`.
+- `close_dispute` emits `DisputeClosedEvt`.
 
-**Files/functions:** `docs/pauser-states.md`, `docs/pause-auth.md`,
-`escrow/src/lib.rs:1431-1520, 2799-2880, 5208-5320`.
-
-**Acceptance criteria:** Document `PauseScope`'s variants, `PauseState`'s fields, the
-legacy-vs-scoped pause interaction, and `PauseScopeMismatch`'s trigger condition (once #1 lands).
-Depends on #1 landing first so the feature actually compiles and the doc describes real behavior.
-
----
-
-## #29: `LOCAL_REPRODUCTION.md` understates ignored-test count by 4.6x and documents a coverage gate CI doesn't enforce
-
-**Category:** Documentation · **Size:** S
-
-**Context:** `escrow/LOCAL_REPRODUCTION.md` claims "10 tests are temporarily ignored" (8 funding cap
-+ 1 external calls + 1 integration) and documents `cargo llvm-cov --fail-under-lines 95` as the
-enforced CI gate. Actual counts: **46** `#[ignore]` attributes across 8 files (`funding.rs` ×27,
-`coverage.rs` ×6, `external_calls.rs` ×7, `legal_hold.rs` ×2, `settlement.rs` ×5,
-`external_calls_mocked.rs` ×1, `attestations.rs` ×2, `admin.rs` ×1). And
-`.github/workflows/ci.yml`'s actual coverage step runs with `continue-on-error: true` and **no**
-`--fail-under-lines` flag at all — it cannot fail the build on a coverage regression today,
-contrary to what this doc implies.
-
-**Files/functions:** `escrow/LOCAL_REPRODUCTION.md`, `.github/workflows/ci.yml`.
-
-**Acceptance criteria:** Update the ignored-test count (or better, point to a `grep -c '#\[ignore'`
-command instead of a hardcoded number that will go stale again — see #34 for the actual triage
-work). Correct the coverage-gate description to match what CI actually runs today
-(`continue-on-error`, report-only), or file the CI change separately (#41) and update this doc once
-that lands.
+**Testing**  
+- Verify event emission in dispute tests using `env.events().all()`.
 
 ---
 
-## #30: `docs/escrow-events.md` documents `CallbackRegisteredEvent`/`CallbackExecutedEvent` correctly, but `update_funding_deadline`'s `FundingDeadlineUpdated` event is undocumented anywhere
+## Issue #64 — `close_dispute` Silent Early Return When `resolved == false`
 
-**Category:** Documentation · **Size:** S
+**Filed as:** [GitHub issue #83](https://github.com/ushpraise/Starfund-contracts/issues/83)
 
-**Context:** See #13 for the code-side half of this. `docs/escrow-events.md` already has correct
-entries for `CallbackRegisteredEvent` (line 291) and `CallbackExecutedEvent` (line 303) — no doc
-work needed there once #13 lands. `FundingDeadlineUpdated` (published by `update_funding_deadline`,
-`escrow/src/lib.rs:5966`) has zero documentation anywhere in `docs/` or `.kiro/`, unlike its
-sibling `FundingDeadlineExtended` (documented at `docs/escrow-events.md:129`).
+**Category:** Bug  
+**Priority:** Low  
+**Suggested Complexity:** Trivial  
 
-**Files/functions:** `docs/escrow-events.md`, `escrow/src/lib.rs::update_funding_deadline`.
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::close_dispute()` (lines 3936–3939)
 
-**Acceptance criteria:** Once #13 resolves whether `update_funding_deadline` is a real, distinct
-entrypoint from `extend_funding_deadline`, add (or don't, if it's removed) a
-`docs/escrow-events.md` entry for `FundingDeadlineUpdated` matching `FundingDeadlineExtended`'s
-level of detail.
+**Problem**  
+In `StarfundEscrow::close_dispute()`:
+```rust
+if resolved {
+    record.state = DisputeState::Resolved;
+    ...
+    env.storage().instance().set(&DataKey::DisputeActive, &false);
+} else {
+    // leave dispute active if the admin chooses to keep it open; the freeze stays in force.
+    return;
+}
+```
+If an admin invokes `close_dispute(caller, false)`, the call verifies signatures, loads storage, and then silently returns `()` without modifying state or recording any action.
 
----
+**Why it matters**  
+Calling an entrypoint named `close_dispute` with `resolved = false` does not close the dispute or update the dispute record, giving the false impression that a resolution action was recorded.
 
-## #31: `docs/openapi.yaml` is missing 5 real entrypoints entirely
+**Proposed solution**  
+Either:
+1. Reject `resolved == false` with a typed error `EscrowError::DisputeResolutionRejected`.
+2. Or record `DisputeState::Dismissed` / `DisputeState::Unresolved` and update the record accordingly.
 
-**Category:** Documentation · **Size:** M
+**Acceptance criteria**  
+- `close_dispute` does not silently no-op when passed `false`.
 
-**Context:** `docs/openapi.yaml` has zero references to `unfund`, `release`, `partial_settle`,
-`rotate_payer`, or `rotate_beneficiary` (confirmed via direct grep — none of the five appear
-anywhere in the file). `docs/tests/openapi.test.js` presumably validates this spec against
-something; it should be checked and extended once the spec catches up.
-
-**Files/functions:** `docs/openapi.yaml`, `docs/tests/openapi.test.js`.
-
-**Acceptance criteria:** Add OpenAPI operation definitions for all 5 missing entrypoints matching
-their actual `lib.rs` signatures (including the typed errors from #4/#5/#24 once those land). Run
-`docs/tests/openapi.test.js` and confirm it passes against the updated spec; if the test doesn't
-already check entrypoint completeness against the contract, note that gap as a follow-up rather
-than expanding this issue's scope.
-
----
-
-## Testing
-
-## #32: 46 `#[ignore]`d tests need individual triage, not a blanket "upstream latent: escrow API/test drift" reason
-
-**Category:** Testing · **Size:** L
-
-**Context:** `#[ignore = "upstream latent: escrow API/test drift"]` appears 35+ times across
-`funding.rs`, `legal_hold.rs`, `admin.rs`, `external_calls_mocked.rs`, `attestations.rs`,
-`external_calls.rs`, and `coverage.rs`. Given #1–#19, this generic reason is very likely masking
-real, specific compile/behavior breaks — once those land, each ignored test needs to be
-individually re-enabled, run, and either fixed or given a *specific* ignore reason (not a repeated
-generic one). A handful have already-specific reasons worth checking first once the crate compiles:
-`escrow/src/tests/settlement.rs:821,973,1041` ("HostError wraps contract panic; expected substring
-not matched" — suggests brittle string-matching assertions that should assert on typed error codes
-instead, consistent with #18's finding), and `:1075` ("body tests non-participant claim, not dust
-sweep capping; panics without `#[should_panic]`" — a mislabeled/misplaced test).
-
-**Files/functions:** All 8 files listed above; depends on #1–#19 landing first.
-
-**Acceptance criteria:** For each of the 46 ignored tests: re-run once the crate compiles; if it
-passes, remove the `#[ignore]`; if it fails, replace the generic reason with the specific failure
-and either fix it or file a focused follow-up issue. Track completion as "0 tests carry the generic
-'upstream latent' reason" rather than "0 ignored tests" (some may be legitimately still-pending
-follow-on work).
+**Testing**  
+- Test calling `close_dispute` with `resolved: false` asserts proper error or state recording.
 
 ---
 
-## #33: Add a compile-time/test-time uniqueness check for `EscrowError` discriminants
+## Issue #65 — `CloseError` Enum Discriminants Collide With `EscrowError` On-Chain
 
-**Category:** Testing · **Size:** S
+**Filed as:** [GitHub issue #84](https://github.com/ushpraise/Starfund-contracts/issues/84)
 
-**Context:** #8 fixes today's 8 duplicate-discriminant collisions, but nothing currently prevents a
-future PR from reintroducing one — the enum is hand-numbered across ~160 variants with no
-automated guard.
+**Category:** Bug  
+**Priority:** High  
+**Suggested Complexity:** Low  
 
-**Files/functions:** `escrow/src/lib.rs::EscrowError`; new test in `escrow/src/tests/coverage.rs`
-or a new small test module.
+**Location:**
+- `escrow/src/lib.rs`
+- `CloseError` enum (lines 209–222)
+- `EscrowError` enum (lines 578+)
 
-**Acceptance criteria:** Add a test that enumerates all `EscrowError` discriminant values (via
-`as u32` on each variant, or a `strum`-style iteration if a crate dependency is acceptable — prefer
-a hand-written match returning all variants to avoid adding a new dependency) and asserts they're
-pairwise distinct. This test must fail loudly (not just via `cargo clippy`) so it catches
-regressions in normal `cargo test` runs.
+**Problem**  
+`CloseError` is annotated with `#[contracterror]` and defines variants:
+```rust
+pub enum CloseError {
+    NotAuthorized = 0,
+    NotInitialized = 1,
+    AlreadyClosed = 2,
+    ActiveBalance = 3,
+    ActiveDispute = 4,
+}
+```
+Meanwhile, `EscrowError` is also annotated with `#[contracterror]` and defines:
+```rust
+pub enum EscrowError {
+    Unauthorized = 1,
+    AlreadyInitialized = 2,
+    ...
+}
+```
+In Soroban, all contract error codes returned from a contract share the same contract error numerical space (u32 error code).
 
----
+**Why it matters**  
+When a client receives error code `2`, it cannot distinguish whether the error is `CloseError::AlreadyClosed` or `EscrowError::AlreadyInitialized`. Error code `1` collides between `NotInitialized` and `Unauthorized`.
 
-## #34: `escrow/src/test_allowlist_tests.rs:1243` has a literal stub test body
+**Proposed solution**  
+Consolidate `CloseError` variants into `EscrowError` with unique, non-colliding discriminants, or assign `CloseError` an offset range (e.g. 500+).
 
-**Category:** Testing · **Size:** S
+**Acceptance criteria**  
+- All contract error codes across all enums in the crate are globally unique.
 
-**Context:** Line 1243 reads `// TODO: implement test body` inside what is otherwise a real `#[test]`
-function in a 2017-line test file.
-
-**Files/functions:** `escrow/src/test_allowlist_tests.rs:1243`.
-
-**Acceptance criteria:** Read the surrounding test's name/doc comment to determine its intended
-assertion, implement it, or remove the stub if it's superseded by another test in the same file
-(check for a near-duplicate test name first).
-
----
-
-## #35: `external_calls_mocked.rs`'s mock token client has 12 `unimplemented!()` method bodies
-
-**Category:** Testing · **Size:** M
-
-**Context:** `escrow/src/tests/external_calls_mocked.rs` (787 lines) implements what appears to be a
-mock SEP-41 token client with `unimplemented!()` bodies at lines 47, 50, 53, 321, 324, 327, 412,
-415, 418, 490, 493, 496 — any test path that actually exercises these methods will panic.
-`escrow/src/external_calls.rs`'s module doc explicitly calls out "Mocked token scenarios (where
-feasible) to detect divergence" as part of the test strategy for the balance-delta invariants —
-these stubs are exactly where a fee-on-transfer or rebasing-token simulation would need real logic.
-
-**Files/functions:** `escrow/src/tests/external_calls_mocked.rs` (12 call sites listed above).
-
-**Acceptance criteria:** For each `unimplemented!()`, either implement the mock behavior it's
-standing in for (likely a fee-on-transfer or balance-manipulating variant, per the surrounding
-module's purpose) or, if the method is never actually called by any current test, remove it and
-note why in a comment. Cross-reference `docs/escrow-token-safety.md` for the specific adversarial
-token behaviors that should be simulated.
+**Testing**  
+- Add a compile/test assertion checking discriminant uniqueness across all contract errors.
 
 ---
 
-## #36: Zero test coverage for the `payer` dual-auth requirement in `fund_impl`
+## Issue #66 — `request_clear_legal_hold` Allows Scheduling Clear on Non-Existent Legal Holds
 
-**Category:** Testing · **Size:** M
+**Filed as:** [GitHub issue #85](https://github.com/ushpraise/Starfund-contracts/issues/85)
 
-**Context:** `escrow/src/tests/` has zero references to `payer` anywhere (`grep -rn "payer"
-escrow/src/tests/*.rs` returns nothing), despite `fund_impl` requiring
-`escrow.payer.require_auth()` on every `fund`/`fund_with_commitment`/`fund_batch` call (line 6583).
-`docs/escrow-security-checklist.md` §"Negative-auth test coverage" claims the `auth_audit_*` suite
-in `escrow/src/tests/admin.rs` comprehensively tests "all state-mutating entrypoints" — it does not
-test the payer requirement at all. See #46/#25 for the underlying design questions this gap is
-hiding.
+**Category:** Bug  
+**Priority:** Medium  
+**Suggested Complexity:** Trivial  
 
-**Files/functions:** `escrow/src/tests/admin.rs` (`auth_audit_*` tests, pattern to extend);
-`escrow/src/lib.rs::fund_impl`.
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::request_clear_legal_hold()` (lines 5574–5597)
 
-**Acceptance criteria:** Add `auth_audit_fund_requires_payer` (and `_fund_with_commitment`,
-`_fund_batch` variants) proving a call signed by the investor alone (no payer signature in
-`env.auths()`) is rejected, and a call signed by both succeeds. This will surface whatever the
-maintainer decides in #46.
+**Problem**  
+In `request_clear_legal_hold()`, the admin signature is checked and the admin nonce is consumed. The function then calculates `clearable_at = now + delay`, sets `DataKey::LegalHoldClearableAt`, and emits `LegalHoldClearRequested`.
+However, it **never checks whether a legal hold is actually active** (`Self::legal_hold_active(&env)`).
 
----
+**Why it matters**  
+An admin can request clearing a legal hold when no hold exists, consuming nonces and emitting confusing `LegalHoldClearRequested` events for non-existent holds.
 
-## #37: `rotate_payer` has no test coverage at all
+**Proposed solution**  
+Add a check at the beginning of `request_clear_legal_hold`:
+```rust
+ensure(&env, Self::legal_hold_active(&env), EscrowError::LegalHoldNotActive);
+```
 
-**Category:** Testing · **Size:** S
+**Acceptance criteria**  
+- `request_clear_legal_hold` reverts with `EscrowError::LegalHoldNotActive` if no legal hold is active.
 
-**Context:** Same zero-hits grep as #36 — `rotate_payer` (`escrow/src/lib.rs:3689`) has no
-dedicated test module, unlike its structural twin `rotate_beneficiary` which is covered by
-`auth_audit_*` tests per the security checklist's table. Specifically needs a test proving/
-disproving the missing-nonce gap identified in #47.
-
-**Files/functions:** `escrow/src/lib.rs::rotate_payer`; new tests alongside
-`rotate_beneficiary`'s existing coverage.
-
-**Acceptance criteria:** Add: dual-auth requirement test (payer-only and admin-only signing both
-rejected), no-op rejection (`NewPayerSameAsCurrent`), status-gate test (`PayerRotationNotOpen`),
-legal-hold-block test, and — once #47 is resolved either way — a replay-protection test consistent
-with whatever `rotate_beneficiary` does.
+**Testing**  
+- Add test verifying `try_request_clear_legal_hold` fails when `legal_hold == false`.
 
 ---
 
-## #38: No property/invariant test exists for the `release()` conservation invariant
+## Issue #67 — Redundant Consecutive Pause Checks in `withdraw()` and `settle()`
 
-**Category:** Testing · **Size:** M
+**Filed as:** [GitHub issue #86](https://github.com/ushpraise/Starfund-contracts/issues/86)
 
-**Context:** `escrow/src/tests/properties.rs` (2816 lines, proptest-based) predates `release()` —
-by construction, since `release()` doesn't even compile yet (#2/#3), `properties.rs` cannot
-currently reference it. Once #1–#19 land, the `funded_amount`/`ReleasedAmount`/
-`DistributedPrincipal` three-way relationship `release()` maintains
-(`escrow/src/lib.rs:6953-6962, 6972-6980`) needs the same proptest-style conservation coverage the
-existing invariants (I-1 through I-10 in `docs/escrow-security-checklist.md` §3) get for
-`fund_impl`/`withdraw`/`settle`.
+**Category:** Refactor / Gas  
+**Priority:** Low  
+**Suggested Complexity:** Trivial  
 
-**Files/functions:** `escrow/src/tests/properties.rs`; `escrow/src/lib.rs::release`.
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::withdraw()` (lines 7040–7050)
+- `StarfundEscrow::settle()` (lines 6771–6782)
 
-**Acceptance criteria:** Add a proptest asserting, across randomized sequences of partial
-`release()` calls: `released_amount` never exceeds `funded_amount`; the final `release()` call
-(bringing `released_amount == funded_amount`) transitions `status` to 3 and no further `release()`
-call succeeds afterward. Add the corresponding entry to `docs/escrow-security-checklist.md` §3 as a
-new invariant (I-11) once this is verified.
+**Problem**  
+In `withdraw()`:
+```rust
+ensure(
+    &env,
+    !Self::paused_blocks(&env, PauseEntry::Withdrawal),
+    EscrowError::PausedBlocksWithdrawal,
+);
+guard_not_paused(
+    &env,
+    EscrowError::PausedBlocksWithdrawal,
+    PauseEntry::Withdrawal,
+);
+```
+And identically in `settle()`:
+```rust
+ensure(
+    &env,
+    !Self::paused_blocks(&env, PauseEntry::Settlement),
+    EscrowError::PausedBlocksSettlement,
+);
+guard_not_paused(
+    &env,
+    EscrowError::PausedBlocksSettlement,
+    PauseEntry::Settlement,
+);
+```
+Both functions execute `ensure(!Self::paused_blocks(...))` immediately followed by `guard_not_paused(...)`. `guard_not_paused` internally calls `ensure(!Self::paused_blocks(...))`.
 
----
+**Why it matters**  
+Calling the identical check twice consecutively performs redundant storage reads and logic execution, wasting gas and cluttering the code.
 
-## #39: `callback_binding_tests.rs` cannot currently exercise the callback system it's meant to test
+**Proposed solution**  
+Remove the duplicate `ensure(!Self::paused_blocks(...))` call and keep only `guard_not_paused(...)`.
 
-**Category:** Testing · **Size:** S
+**Acceptance criteria**  
+- Duplicate pause checks in `withdraw()` and `settle()` are eliminated.
 
-**Context:** `escrow/src/callback_binding_tests.rs` (315 lines) tests `execute_callback`'s 6 typed
-errors (`CallbackWrongOrigin`, `CallbackWrongNonce`, `CallbackWrongPhase`, `CallbackReplayed`,
-`CallbackAfterCancellation`, `CallbackNotFound`) — but since `CallbackRegisteredEvent`/
-`CallbackExecutedEvent` don't compile (#13), this entire file is currently blocked.
-
-**Files/functions:** `escrow/src/callback_binding_tests.rs`; depends on #13.
-
-**Acceptance criteria:** Once #13 lands, confirm this file actually exercises all 6 error codes
-with one negative test each (not just the happy path) — audit and fill any gaps found.
-
----
-
-## #40: `escrow/proptest-regressions/` seed files should be reconciled with `properties.rs` once the crate compiles
-
-**Category:** Testing · **Size:** S
-
-**Context:** `escrow/proptest-regressions/test.txt` and `tests/properties.txt` are committed
-regression seeds (intentionally tracked per the root `.gitignore`'s comment). Since the crate
-doesn't currently compile, these seeds can't be replayed to confirm they still correspond to live
-`proptest!` blocks in `properties.rs`. This is a follow-up dependent on #1–#19 and #38.
-
-**Files/functions:** `escrow/proptest-regressions/test.txt`,
-`escrow/proptest-regressions/tests/properties.txt`, `escrow/src/tests/properties.rs`.
-
-**Acceptance criteria:** Once the crate compiles, run the proptest suite with these regression
-files present and confirm every seed still maps to an existing property (no orphaned seeds for
-deleted/renamed properties). Remove any that don't.
-
----
-
-## Tooling / Infrastructure
-
-## #41: No `[profile.release]` configured for a wasm32 Soroban contract
-
-**Category:** Tooling · **Size:** S
-
-**Context:** Neither `Cargo.toml` (workspace root) nor `escrow/Cargo.toml` defines a
-`[profile.release]` section (confirmed via direct grep — zero `profile` matches in either file).
-Soroban/wasm32 contracts typically want an explicit release profile
-(`opt-level = "z"`, `lto = true`, `codegen-units = 1`, `panic = "abort"`, `strip = "symbols"`) to
-minimize deployed wasm size, which directly affects deployment cost and reviewer audit surface.
-
-**Files/functions:** `Cargo.toml` (root) or `escrow/Cargo.toml`.
-
-**Acceptance criteria:** Add a `[profile.release]` section with the settings above (or the subset
-appropriate after measuring their effect). Record the before/after wasm binary size (from the
-existing `cargo build --target wasm32v1-none --release` CI step) in the PR description.
+**Testing**  
+- Run pause tests in `escrow/src/tests/pause.rs`.
 
 ---
 
-## #42: No `rust-toolchain.toml` pinning the exact Rust version
+## Issue #68 — `withdraw()` Lacks `amount > 0` Guard, Permitting Zero-Payout Execution and Event
 
-**Category:** Tooling · **Size:** S
+**Filed as:** [GitHub issue #87](https://github.com/ushpraise/Starfund-contracts/issues/87)
 
-**Context:** `.github/workflows/ci.yml` uses `dtolnay/rust-toolchain@stable`, a floating tag with no
-version pin, and there's no `rust-toolchain.toml` anywhere in the repo (confirmed via `find`). A
-future stable Rust release can silently change `rustc`/`clippy` lint behavior (the `-D warnings`
-gate in CI makes this especially risky — a new clippy lint promoted to warn-by-default could break
-CI with no repo change at all) and there's no way to reproduce a specific CI run's exact toolchain
-locally.
+**Category:** Bug  
+**Priority:** Medium  
+**Suggested Complexity:** Trivial  
 
-**Files/functions:** New `rust-toolchain.toml` at repo root; `.github/workflows/ci.yml`.
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::withdraw()` (lines 7058–7110)
 
-**Acceptance criteria:** Add `rust-toolchain.toml` pinning a specific stable version (matching
-whatever's currently green in CI). Update `escrow/LOCAL_REPRODUCTION.md` to reference it instead of
-implying "any stable toolchain" works.
+**Problem**  
+In `StarfundEscrow::withdraw()`:
+```rust
+let released_amount: i128 = env.storage().instance().get(&keys::released_amount()).unwrap_or(0);
+let amount = escrow.funded_amount.checked_sub(released_amount).unwrap();
+```
+If the entire funded amount was already released to the SME via `StarfundEscrow::release()`, `released_amount == escrow.funded_amount`, making `amount == 0`.
+`withdraw()` does not check `amount > 0`. It proceeds to set `escrow.status = 3` (Withdrawn), skips fee and net transfers, and publishes `SmeWithdrew` with `payout: 0, fee: 0`.
 
----
+**Why it matters**  
+Invoking `withdraw()` when there is nothing left to withdraw should be rejected as an invalid operation rather than mutating state and emitting zero-value events.
 
-## #43: No dependency-vulnerability scanning in CI
+**Proposed solution**  
+Add validation:
+```rust
+ensure(&env, amount > 0, EscrowError::NothingToWithdraw);
+```
 
-**Category:** Tooling · **Size:** M
+**Acceptance criteria**  
+- Calling `withdraw()` when `amount == 0` reverts with `EscrowError::NothingToWithdraw`.
 
-**Context:** `.github/workflows/ci.yml` (read in full) has no `cargo audit` or `cargo deny` step,
-and there's no `deny.toml`/`audit.toml` anywhere in the repo. This is a contract that moves real
-funds (per the README/security checklist's own framing) with zero automated dependency-CVE
-scanning today.
-
-**Files/functions:** `.github/workflows/ci.yml`; new `deny.toml` or equivalent.
-
-**Acceptance criteria:** Add a `cargo audit` (or `cargo deny check advisories`) CI step. Decide
-whether it should hard-fail the build or `continue-on-error` initially while the dependency tree is
-triaged for existing advisories; document the choice in the workflow file's comments.
-
----
-
-## #44: Coverage and workspace-clippy CI steps use `continue-on-error: true` with no enforced threshold
-
-**Category:** Tooling · **Size:** S
-
-**Context:** `.github/workflows/ci.yml`'s coverage step (`cargo llvm-cov --features testutils
---summary-only -p starfund_escrow`) and its second, `--all-targets` clippy pass both use
-`continue-on-error: true`, and the coverage step has no `--fail-under-lines` flag at all — CI
-cannot currently fail a PR for either a coverage regression or a test-scope lint regression, even
-though `escrow/LOCAL_REPRODUCTION.md` documents a 95%-line-coverage gate as if it's enforced (see
-#29 for the doc-side fix).
-
-**Files/functions:** `.github/workflows/ci.yml`.
-
-**Acceptance criteria:** Once #1–#19 land and coverage can actually be measured again, either
-restore `--fail-under-lines 95` as a hard gate (removing `continue-on-error` from that step) or
-explicitly document in the workflow file why it's report-only. Same decision for the
-`--all-targets` clippy pass. Update #29's doc fix to match whatever is decided here.
+**Testing**  
+- Add test: Fully release funds via `release()`, then call `withdraw()`. Assert it reverts with `NothingToWithdraw`.
 
 ---
 
-## #45: Root `.gitignore` lists `Cargo.lock` as ignored, but it's git-tracked — dead/contradictory entry
+## Issue #69 — `settle_batch` Requires Target SME Cross-Contract Signatures, Failing Batch Settlements
 
-**Category:** Tooling · **Size:** S
+**Filed as:** [GitHub issue #88](https://github.com/ushpraise/Starfund-contracts/issues/88)
 
-**Context:** Root `.gitignore`'s "Build" section lists `Cargo.lock` as ignored, but `git ls-files`
-confirms the root `Cargo.lock` is tracked (correctly — this is a deployed contract, not a library
-meant for downstream `cargo` consumers, so pinning the lockfile is the right call; the gitignore
-entry is simply stale). This repo previously also had a second, independently-drifted
-`escrow/Cargo.lock` committed alongside it (removed as part of this backlog's cleanup pass —
-`diff`ing the two showed hundreds of lines of divergence, and `git status` after a `cargo clippy`
-run from the workspace root never touched it, confirming cargo's workspace resolution ignores it
-in favor of the root lockfile).
+**Category:** Bug  
+**Priority:** High  
+**Suggested Complexity:** Medium  
 
-**Files/functions:** `.gitignore`.
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::settle_batch()` (lines 6871–6885)
+- `StarfundEscrow::settle()` (line 6787)
 
-**Acceptance criteria:** Remove the `Cargo.lock` line from `.gitignore`'s Build section (it's
-misleading given the file is intentionally tracked), and add a one-line comment next to
-`escrow/Cargo.toml`'s workspace membership (or in `README.md`'s Prerequisites section) stating only
-the root `Cargo.lock` is authoritative, so a future contributor doesn't reintroduce a second one by
-running `cargo build` from inside `escrow/` in a context where it forgets it's a workspace member.
+**Problem**  
+`settle_batch` loops over a vector of escrow addresses and invokes `client.settle()` on each target contract.
+In `settle()`, line 6787 executes:
+`let mut escrow = Self::load_escrow_require_sme(&env);`
+which requires `escrow.sme_address.require_auth()`.
+In Soroban, when Contract A invokes Contract B, Contract B's `require_auth` on an address requires that address to have explicitly authorized the cross-contract invocation from Contract A to Contract B.
 
----
+**Why it matters**  
+An operator or admin attempting to settle multiple escrows in a batch cannot produce the SME signatures for every distinct SME in the batch, causing `settle_batch` to fail on authorization. Furthermore, once an escrow has reached maturity, settlement should be executable by either the SME, the admin, or permissionlessly.
 
-## Security Hardening
+**Proposed solution**  
+Allow `settle()` to be authorized by either `escrow.sme_address` OR `escrow.admin` (or permissionlessly once `now >= escrow.maturity`), enabling batch settlement by operators.
 
-## #46: `release()` bypasses `protocol_fee_bps` entirely — a fee-free principal-exit path parallel to `withdraw()`
+**Acceptance criteria**  
+- `settle_batch` can be executed by the admin without requiring individual SME signatures for each target escrow.
 
-**Category:** Security · **Size:** L
-
-**What must not change:** the conservation invariant `sme_payout + fee == funded_amount` that
-`withdraw()` enforces for every principal disbursement to the SME.
-
-**Context:** `withdraw()` applies the immutable, init-time `DataKey::ProtocolFeeBps` split to the
-full `funded_amount` (per the module rustdoc's "Immutable protocol fee" section,
-`escrow/src/lib.rs:121-145`) and transitions `status` 1→3. `release()` (`:6900-6990`, added later)
-**also** transitions `status` 1→3 (on its final tranche) and moves principal to the same
-`escrow.sme_address`, but its transfer at lines 6941-6947 sends the **full requested `amount`**
-directly to the SME with no fee computation, no treasury involvement, and no reference to
-`ProtocolFeeBps` anywhere in the function. Both entrypoints are available whenever `status == 1`.
-A fee-averse SME can simply always call `release(remaining)` instead of `withdraw()` and extract
-100% of principal, permanently bypassing the protocol fee the contract's own top-level
-documentation describes as a core economic guarantee.
-
-**Files/functions:** `escrow/src/lib.rs::release` (:6900-6990), `::withdraw` (fee-split logic per
-module doc lines 121-145).
-
-**Acceptance criteria:** Maintainer decision required on intended design — either (a) `release()`
-should apply the same `ProtocolFeeBps` split `withdraw()` does, with a test asserting fee parity
-between the two paths for equivalent amounts; or (b) `release()` and `withdraw()` should be made
-mutually exclusive per escrow instance (calling one disables the other), with a test proving the
-exclusion; or (c) if `release()` is intentionally fee-exempt for a documented reason (e.g. it's
-meant for a different, non-fee-liable disbursement category), that must be stated explicitly in the
-module rustdoc's fee section so it isn't mistaken for an oversight by the next reader. Do not ship
-a silent fix that just adds the fee without confirming intent — this changes real economic
-behavior.
+**Testing**  
+- Add integration test settling 3 mature escrows via `settle_batch`.
 
 ---
 
-## #47: `fund_impl`'s undocumented `payer` dual-auth has no recovery path if the payer key is lost
+## Issue #70 — `set_storage_limit` Lacks Admin Nonce Replay Protection and Event Emission
 
-**Category:** Security · **Size:** L
+**Filed as:** [GitHub issue #89](https://github.com/ushpraise/Starfund-contracts/issues/89)
 
-**What must not change:** the ability for a legitimately-configured escrow to keep accepting
-investor funding indefinitely as long as at least the admin key remains available (mirrors the
-existing admin-recovery guarantee).
+**Category:** Bug / Security  
+**Priority:** Medium  
+**Suggested Complexity:** Low  
 
-**Context:** `fund_impl` requires `escrow.payer.require_auth()` on every funding call (line 6583),
-and `payer` defaults to `admin` at `init` (line 3233). The **only** way to change `payer` is
-`rotate_payer` (`:3689`), which itself requires **both** `escrow.payer.require_auth()` **and**
-`escrow.admin.require_auth()` in a single atomic call — with no two-step proposal/expiry mechanism.
-Contrast with admin-key loss, which has a documented recovery lever
-(`propose_admin`/`accept_admin`, plus `execute_admin_recovery` after `PendingAdminExpiry` per
-`EscrowError::AdminRecoveryNotExpired`). If the `payer` key is lost or its signer becomes
-unavailable, `rotate_payer` can **never** be called (it needs the lost key's own signature to
-authorize its own replacement), which means **all future funding halts permanently** for that
-escrow instance — a strictly worse failure mode than losing the admin key, and currently
-undocumented anywhere (see #25).
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::set_storage_limit()` (lines 7738–7750)
 
-**Files/functions:** `escrow/src/lib.rs::fund_impl` (:6583), `::rotate_payer` (:3689), contrast with
-`::propose_admin`/`::accept_admin`/`::execute_admin_recovery`.
+**Problem**  
+In `StarfundEscrow::set_storage_limit(env: Env, limit: u32) -> u32`:
+1. It calls `Self::load_escrow_require_admin(&env)`.
+2. It validates `limit` in `MIN_STORAGE_LIMIT_LEDGERS..=MAX_STORAGE_LIMIT_LEDGERS`.
+3. It sets `DataKey::StorageLimit`.
+Unlike every other admin mutation entrypoint (`set_legal_hold`, `request_clear_legal_hold`, `rotate_beneficiary`, `propose_admin`, `cancel_funding`, `update_funding_target`), it has no `expected_nonce: u32` parameter, does not call `consume_admin_nonce`, and emits no event.
 
-**Acceptance criteria:** Maintainer decision required — either (a) add an admin-only emergency
-payer-recovery path analogous to `execute_admin_recovery` (admin alone can reset `payer` after a
-documented timelock, without needing the lost key's signature); or (b) if `payer` is intended to
-always equal a governed multisig identical to `admin` in practice (making this risk moot by
-deployment convention), document that constraint explicitly and add a test/warning for the
-degenerate single-key case. Cross-reference #25 (doc gap) and #36 (test gap) — this issue is the
-design decision those two are downstream of.
+**Why it matters**  
+1. Multi-sig admin wallets cannot bind a `set_storage_limit` authorization to a specific transaction sequence, exposing them to signature replay.
+2. Indexers and monitoring systems cannot observe when contract storage TTL limits are modified.
 
----
+**Proposed solution**  
+Add `expected_nonce: u32` to `set_storage_limit`, consume the nonce via `Self::consume_admin_nonce(&env, expected_nonce)`, and define and emit `StorageLimitUpdatedEvent`.
 
-## #48: `investor.require_auth()` ordering in `fund_impl` doesn't match the documented guard-ordering table
+**Acceptance criteria**  
+- `set_storage_limit` consumes an admin nonce.
+- `StorageLimitUpdatedEvent` is emitted with `invoice_id`, `old_limit`, and `new_limit`.
 
-**Category:** Security · **Size:** M
-
-**What must not change:** the ADR-002 canonical sequence itself (read-only preconditions → auth →
-writes) — this issue is about the checklist's table accuracy, not the underlying invariant, which
-does hold (no storage write happens before `investor.require_auth()` succeeds).
-
-**Context:** `docs/escrow-security-checklist.md` §6's Entrypoint checklist table lists, for
-`fund`/`fund_with_commitment`: "Pre-auth reads (no writes): floor read | `require_auth`: line
-~1119." That implies the floor read happens *before* `investor.require_auth()`. Reading the actual
-code: `investor.require_auth()` is called at `escrow/src/lib.rs:6420`, and the floor read happens
-afterward at lines 6435-6446 (along with the decimal-scale check, legal-hold check, status check,
-and funding-deadline check — all also after the auth call). The order is reversed from what the
-table documents. This doesn't violate the "no write before auth" invariant (all of these are
-reads), but it does mean the specific ordering the checklist describes for audit purposes is wrong,
-and an auditor trusting the table's literal claim would be misled about what's validated before a
-signature is required.
-
-**Files/functions:** `docs/escrow-security-checklist.md` §6 (the `fund`/`fund_with_commitment`
-row); `escrow/src/lib.rs::fund_impl` (:6413-6473).
-
-**Acceptance criteria:** Re-verify actual guard order in `fund_impl` line-by-line, update the
-checklist table's "Pre-auth reads" column to match reality, and add a regression test (in the
-spirit of `coverage.rs`'s `refactor_gate_helpers_*` tests) asserting the auth call happens at a
-specific point relative to the other guards, so future refactors can't silently reorder them again
-without a test failing.
+**Testing**  
+- Test calling `set_storage_limit` with invalid nonce reverts with `AdminNonceMismatch`.
 
 ---
 
-## #49: `FeeSchedule` subsystem could mislead an auditor into believing schedule-based fees are enforced
+## Issue #71 — `cancel_funding` Lacks Dispute Gate, Permitting Cancellation During Active Dispute
 
-**Category:** Security · **Size:** S
+**Filed as:** [GitHub issue #90](https://github.com/ushpraise/Starfund-contracts/issues/90)
 
-**What must not change:** `get_active_fee_schedule()`'s current read semantics (it should keep
-returning whatever schedule was activated — the fix here is about disclosure/wiring, not about
-hiding the stored data).
+**Category:** Bug / Security  
+**Priority:** High  
+**Suggested Complexity:** Trivial  
 
-**Context:** This is the security-audit framing of #19's engineering gap — kept separate because
-the fix/audience differs. An external auditor or integrator who calls `get_active_fee_schedule()`
-and sees a non-null `FeeSchedule` with a specific `fee_bps` would reasonably conclude that value
-governs SME disbursement fees. It does not — `withdraw()` only reads the separate, immutable
-`DataKey::ProtocolFeeBps`. This is a trust-boundary/disclosure risk independent of whether #19 is
-resolved by wiring the subsystem up or documenting it as inert: either way, anyone who audited the
-contract *before* this issue is filed may have already drawn the wrong conclusion from the public
-read API's apparent liveness.
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::cancel_funding()` (lines 8108–8127)
 
-**Files/functions:** `escrow/src/lib.rs:2667-2770` (`FeeSchedule` module).
+**Problem**  
+In `StarfundEscrow::cancel_funding()`:
+```rust
+Self::guard_not_legal_hold(&env, EscrowError::LegalHoldBlocksCancelFunding);
+let mut escrow = Self::load_escrow_require_admin(&env);
+Self::consume_admin_nonce(&env, expected_nonce);
+guard_status_eq(&env, escrow.status, 0, EscrowError::CancelFundingNotOpen);
+```
+While `cancel_funding` checks legal hold and status, it **does not call `guard_not_disputed`**.
 
-**Acceptance criteria:** Once #19 lands (either direction), add a `# Security` rustdoc section on
-`get_active_fee_schedule` (and `submit_fee_schedule`) explicitly stating whether an activated
-schedule currently affects any token transfer, so the public API surface is self-documenting rather
-than relying on a reader finding this backlog issue or the module-level fee docs.
+**Why it matters**  
+If a dispute is active (`is_dispute_active() == true`), value-moving and lifecycle transitions must be frozen until resolution. Without a dispute guard, an admin can bypass the dispute freeze and unilaterally cancel the funding phase.
+
+**Proposed solution**  
+Add `guard_not_disputed(&env, EscrowError::DisputeBlocksCancelFunding);` to `cancel_funding()`.
+
+**Acceptance criteria**  
+- `cancel_funding` reverts with `DisputeBlocksCancelFunding` if an active dispute exists.
+
+**Testing**  
+- Add test: open dispute on open escrow -> attempt `cancel_funding` -> assert revert.
 
 ---
 
-## #50: `rotate_payer` lacks the admin-nonce replay protection its sibling `rotate_beneficiary` has
+## Issue #72 — `cancel_funding` Ignores Operational Pause Gates
 
-**Category:** Security · **Size:** M
+**Filed as:** [GitHub issue #91](https://github.com/ushpraise/Starfund-contracts/issues/91)
 
-**What must not change:** `rotate_beneficiary`'s existing nonce behavior — this issue only adds the
-same protection to `rotate_payer`, it doesn't touch the beneficiary path.
+**Category:** Bug  
+**Priority:** Medium  
+**Suggested Complexity:** Trivial  
 
-**Context:** Every other dual-auth, admin-involved entrypoint consumes the replay-protection nonce
-via `consume_admin_nonce`: `set_legal_hold`, `request_clear_legal_hold`, `set_allowlist_active`,
-`set_investor_allowlisted(s)`, and — directly comparable in shape — `rotate_beneficiary`
-(`escrow/src/lib.rs:3647`, which takes `expected_nonce: u32` and calls
-`Self::consume_admin_nonce(&env, expected_nonce)` immediately after its own dual `require_auth`
-calls). `rotate_payer` (`:3689`) has the **identical** dual-auth shape (current-role +
-admin, both required) but its signature is `pub fn rotate_payer(env: Env, new_payer: Address) ->
-InvoiceEscrow` — no `expected_nonce` parameter, and no call to `consume_admin_nonce` anywhere in
-its body. The nonce exists specifically to bind a multi-signature authorization to a single
-intended call so one collected signature can't be replayed in a different context; `rotate_payer`
-requires the same multi-signature pattern without that binding.
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::cancel_funding()` (lines 8108–8127)
 
-**Files/functions:** `escrow/src/lib.rs::rotate_payer` (:3689), contrast with `::rotate_beneficiary`
-(:3615-3647).
+**Problem**  
+`cancel_funding` lacks an operational pause check (`guard_not_paused`). While funding, refunds, claims, releases, and withdrawals all check pause state, an operator pause does not stop `cancel_funding`.
 
-**Acceptance criteria:** Add `expected_nonce: u32` to `rotate_payer`'s signature and call
-`Self::consume_admin_nonce(&env, expected_nonce)` in the same position `rotate_beneficiary` does
-(after the dual `require_auth`, before the storage write). Coordinate with #5 (which is also
-touching this function's error variants) and #37 (test coverage) in the same PR wave.
+**Why it matters**  
+An emergency operational pause should prevent state transitions across the escrow contract.
+
+**Proposed solution**  
+Add `guard_not_paused(&env, EscrowError::PausedBlocksCancelFunding, PauseEntry::Funding);` to `cancel_funding()`.
+
+**Acceptance criteria**  
+- `cancel_funding` reverts when funding operations are paused.
+
+**Testing**  
+- Add test pausing funding scope and asserting `cancel_funding` reverts.
+
+---
+
+## Issue #73 — `refund_batch` Passes `false` to `skip_zero_contribution`, Breaking Batch Execution on Zero Balance
+
+**Filed as:** [GitHub issue #92](https://github.com/ushpraise/Starfund-contracts/issues/92)
+
+**Category:** Bug  
+**Priority:** Medium  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::refund_batch()` (lines 8249–8252)
+- `StarfundEscrow::refund_impl()` (lines 8146–8163)
+
+**Problem**  
+`refund_impl` has a parameter `skip_zero_contribution: bool`. At lines 8148–8150, its documentation states:
+`/// When skip_zero_contribution is true, investors with no recorded contribution are skipped silently (batch mode). Otherwise a zero contribution fails with EscrowError::NoContributionToRefund.`
+However, in `StarfundEscrow::refund_batch()` at line 8250:
+```rust
+Self::refund(env.clone(), investor);
+```
+`refund()` hardcodes `Self::refund_impl(&env, investor, false)`.
+
+**Why it matters**  
+Because `false` is passed, if any address in the batch has a zero contribution, `refund_impl` panics with `EscrowError::NoContributionToRefund`, terminating the entire batch transaction instead of skipping it as intended for batch mode.
+
+**Proposed solution**  
+In `refund_batch()`, call `Self::refund_impl(&env, investor, true)` directly.
+
+**Acceptance criteria**  
+- `refund_batch` silently skips addresses with zero contribution without aborting the batch.
+
+**Testing**  
+- Add test executing `refund_batch` containing a mix of funded investors and zero-contribution addresses.
+
+---
+
+## Issue #74 — `InvestorPayoutClaimed` Event Omits Payout Amount
+
+**Filed as:** [GitHub issue #93](https://github.com/ushpraise/Starfund-contracts/issues/93)
+
+**Category:** Bug / Events  
+**Priority:** Medium  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `InvestorPayoutClaimed` struct (lines 2385–2392)
+- `StarfundEscrow::claim_investor_payout()` (lines 7235–7240)
+
+**Problem**  
+The event struct `InvestorPayoutClaimed` is defined as:
+```rust
+#[contractevent]
+pub struct InvestorPayoutClaimed {
+    #[topic]
+    pub name: Symbol,
+    #[topic]
+    pub investor: Address,
+    #[topic]
+    pub invoice_id: Symbol,
+}
+```
+It does not contain a field for the payout amount.
+
+**Why it matters**  
+All other financial events (`SmeWithdrew`, `PartialRelease`, `FinalRelease`, `EscrowSettled`, `EscrowFunded`, `EscrowUnfunded`) include the transferred token amount. Indexers monitoring `InvestorPayoutClaimed` cannot determine how many tokens were transferred to the investor without making an external query.
+
+**Proposed solution**  
+Add `pub payout: i128` to `InvestorPayoutClaimed` and populate it in `claim_investor_payout`.
+
+**Acceptance criteria**  
+- `InvestorPayoutClaimed` includes the `payout` amount field.
+
+**Testing**  
+- Assert event data payload contains `payout` in claim payout unit tests.
+
+---
+
+## Issue #75 — Economic Discrepancy: `settle()` and `get_settlement_pool()` Use Base Yield While `compute_investor_payout()` Uses Investor Tiered Yields
+
+**Filed as:** [GitHub issue #94](https://github.com/ushpraise/Starfund-contracts/issues/94)
+
+**Category:** Bug / Security  
+**Priority:** High  
+**Suggested Complexity:** High  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::settle()` (lines 6813–6823)
+- `StarfundEscrow::get_settlement_pool()` (lines 7376–7450)
+- `StarfundEscrow::compute_investor_payout()` (lines 7350–7374)
+- `docs/escrow-pro-rata.md` (lines 106–120)
+
+**Problem**  
+In `settle()` and `get_settlement_pool()`, the settlement pool is calculated as:
+```rust
+let coupon = funded_amount * escrow.yield_bps / 10_000;
+let settle_pool = funded_amount + coupon;
+```
+This calculation strictly uses the escrow's base `yield_bps`.
+However, in `compute_investor_payout()`, each investor's payout is calculated using their individual tiered yield:
+```rust
+let effective_yield_bps = get_persistent_investor_effective_yield(...).unwrap_or(escrow.yield_bps);
+let coupon = total_principal * effective_yield_bps / 10_000;
+let settle_pool = total_principal + coupon;
+payout = contribution * settle_pool / total_principal;
+```
+If investors locked funds under higher yield tiers (e.g. 12% vs base 8%), the sum of all investor payouts ($\sum \text{payout}_i$) will exceed the `settle_pool` calculated in `settle()` and `get_settlement_pool()`.
+
+**Why it matters**  
+If the SME repays the amount returned by `get_settlement_pool()`, the contract balance will be insufficient to pay all investors. The last investors to call `claim_investor_payout()` will have their claims revert with `InsufficientTokenBalanceBeforeTransfer`.
+
+**Proposed solution**  
+1. In `get_settlement_pool()`, compute the true total liability by summing the theoretical payouts across all recorded investors in `InvestorIndex`.
+2. Document the difference between the base-yield pool and the tier-weighted pool.
+
+**Acceptance criteria**  
+- `get_settlement_pool()` returns a pool amount that guarantees solvency for all tiered investor claims.
+
+**Testing**  
+- Create an escrow with 2 investors in different yield tiers. Assert contract balance covers sum of both claims.
+
+---
+
+## Issue #76 — Tuple Destructuring Compile Error in `fund_impl` Tier Selection
+
+**Filed as:** [GitHub issue #95](https://github.com/ushpraise/Starfund-contracts/issues/95)
+
+**Category:** Bug / Compile-Blocker  
+**Priority:** Critical  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::fund_impl()` (lines 6542–6543)
+- `effective_yield_for_commitment()` (line 2993)
+
+**Problem**  
+At line 6542, `fund_impl` calls:
+```rust
+let (eff, lock) =
+    Self::effective_yield_for_commitment(&env, escrow.yield_bps, committed_lock_secs);
+investor_effective_yield_bps = eff;
+tier_lock_secs = lock;
+```
+However, `effective_yield_for_commitment` returns `YieldResolution`:
+```rust
+fn effective_yield_for_commitment(...) -> YieldResolution
+```
+Rust does not permit destructuring a struct into a 2-tuple `(eff, lock)`.
+
+**Why it matters**  
+Causes compiler error `E0308: mismatched types: expected tuple (i64, u64), found struct YieldResolution`, blocking the build of `fund_impl`.
+
+**Proposed solution**  
+Change line 6542 to access the fields of `YieldResolution`:
+```rust
+let resolution =
+    Self::effective_yield_for_commitment(&env, escrow.yield_bps, committed_lock_secs);
+investor_effective_yield_bps = resolution.effective_yield_bps;
+tier_lock_secs = resolution.matched_lock_secs;
+```
+
+**Acceptance criteria**  
+- Struct `YieldResolution` is bound by name, not destructured as a tuple.
+- Code compiles without `E0308`.
+
+**Testing**  
+- Verified during `cargo check -p starfund_escrow`.
+
+---
+
+## Issue #77 — Inbound Token Transfer Parameter Naming in `transfer_funding_token_with_balance_checks`
+
+**Filed as:** [GitHub issue #96](https://github.com/ushpraise/Starfund-contracts/issues/96)
+
+**Category:** Refactor / Code Quality  
+**Priority:** Low  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/external_calls.rs` (lines 106–112)
+
+**Problem**  
+In `external_calls::transfer_funding_token_with_balance_checks`:
+```rust
+pub fn transfer_funding_token_with_balance_checks(
+    env: &Env,
+    token_addr: &Address,
+    from: &Address,
+    treasury: &Address,
+    amount: i128,
+)
+```
+The recipient parameter is named `treasury`. However, this function is the general-purpose outbound transfer helper called for transfers to the SME in `withdraw()`, to investors in `claim_investor_payout()` and `refund()`, and to the treasury in `sweep_terminal_dust()`.
+
+**Why it matters**  
+Naming the recipient `treasury` in a generic transfer function is confusing to contributors and static analysis tools.
+
+**Proposed solution**  
+Rename the parameter from `treasury` to `recipient` (or `to`).
+
+**Acceptance criteria**  
+- Parameter name reflects generic recipient semantics.
+
+**Testing**  
+- Ensure all calls in `lib.rs` and tests compile cleanly.
+
+---
+
+## Issue #78 — Lack of Self-Transfer Guard in `external_calls.rs` Causes Confusing Delta Errors
+
+**Filed as:** [GitHub issue #97](https://github.com/ushpraise/Starfund-contracts/issues/97)
+
+**Category:** Bug  
+**Priority:** Low  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/external_calls.rs` (lines 113–145)
+
+**Problem**  
+In `transfer_funding_token_with_balance_checks`, if `from == treasury` (a self-transfer), `from_before` equals `treasury_before` and `from_after` equals `treasury_after`. As a result, `spent` and `received` evaluate to `0`, causing the transfer to fail with `EscrowError::SenderBalanceDeltaMismatch`.
+
+**Why it matters**  
+Failing with `SenderBalanceDeltaMismatch` masks the underlying bug (an address attempting to transfer to itself).
+
+**Proposed solution**  
+Add an explicit assertion at the start of the function:
+```rust
+ensure(env, from != treasury, EscrowError::SelfTransferNotAllowed);
+```
+
+**Acceptance criteria**  
+- Self-transfers are explicitly rejected with a dedicated error.
+
+**Testing**  
+- Add unit test passing identical addresses to `transfer_funding_token_with_balance_checks`.
+
+---
+
+## Issue #79 — Clean Up Commented-Out Test Modules in `escrow/src/tests/mod.rs`
+
+**Filed as:** [GitHub issue #98](https://github.com/ushpraise/Starfund-contracts/issues/98)
+
+**Category:** Testing / DevEx  
+**Priority:** Low  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/tests/mod.rs` (lines 64–66, 77, 88, 90)
+
+**Problem**  
+In `escrow/src/tests/mod.rs`, several test module declarations are commented out:
+```rust
+// mod collateral_boundary_tests; // file not present in this tree
+// mod collateral_config_view;    // file not present in this tree
+// mod collateral_limit_setter;   // file not present in this tree
+// mod integration;
+// mod settlement_limit; // file not present in this tree
+// mod admin_recovery;  // file not present in this tree
+```
+
+**Why it matters**  
+Commented-out code causes dead code noise and confusion about which test suites are active.
+
+**Proposed solution**  
+Remove the commented-out module lines or replace them with a single explanatory doc comment.
+
+**Acceptance criteria**  
+- Stale commented-out module lines are cleaned up.
+
+**Testing**  
+- `cargo test` runs without warnings.
+
+---
+
+## Issue #80 — Missing `collateral_pledge_key` Function Referenced in `escrow/src/keys.rs` Docs
+
+**Filed as:** [GitHub issue #99](https://github.com/ushpraise/Starfund-contracts/issues/99)
+
+**Category:** Documentation / DevEx  
+**Priority:** Low  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/keys.rs` (lines 13–17)
+
+**Problem**  
+The documentation of `escrow/src/keys.rs` states:
+`/// The collateral pledge key family is managed by collateral_pledge_key. All three collateral entrypoints ... call this function instead of constructing DataKey::SmeCollateralPledge inline.`
+However, the function `collateral_pledge_key` is not defined anywhere in `keys.rs`.
+
+**Why it matters**  
+API documentation promises a key helper function that does not exist in the module.
+
+**Proposed solution**  
+Implement the missing helper in `escrow/src/keys.rs`:
+```rust
+pub(crate) fn collateral_pledge_key() -> DataKey {
+    DataKey::SmeCollateralPledge
+}
+```
+and use it at call sites in `lib.rs`.
+
+**Acceptance criteria**  
+- `collateral_pledge_key` exists in `keys.rs` and matches doc description.
+
+**Testing**  
+- Verify `keys::collateral_pledge_key()` returns `DataKey::SmeCollateralPledge`.
+
+---
+
+## Issue #81 — `test_allowlist_tests.rs` Fails Compilation Due to Outdated `client.init` Argument Count (15 vs 19)
+
+**Filed as:** [GitHub issue #100](https://github.com/ushpraise/Starfund-contracts/issues/100)
+
+**Category:** Testing / Compile-Blocker  
+**Priority:** Critical  
+**Suggested Complexity:** Low  
+
+**Location:**
+- `escrow/src/test_allowlist_tests.rs` (lines 19–35, 511–527)
+- `escrow/src/lib.rs` (lines 3073–3094)
+
+**Problem**  
+In `escrow/src/test_allowlist_tests.rs`, helper functions `init` (line 19) and `init_gate` (line 511) call `client.init(...)` with 15 arguments:
+`admin, invoice_id, sme, amount, yield_bps, maturity, token, registry, treasury, yield_tiers, min_contribution, max_unique_investors, max_per_investor, legal_hold_clear_delay, maturity_max_horizon`.
+`StarfundEscrow::init` takes 19 parameters (excluding `env`). It is missing:
+`funding_deadline`, `allowlist_active`, `protocol_fee_bps`, `token_decimals`.
+
+**Why it matters**  
+`cargo test` fails compilation with `E0061: this function takes 19 arguments but 15 arguments were supplied`. The entire `test_allowlist_tests` suite cannot run.
+
+**Proposed solution**  
+Update `client.init(...)` calls in `test_allowlist_tests.rs` to pass the 4 missing parameters (`&None, &None, &None, &None`).
+
+**Acceptance criteria**  
+- `test_allowlist_tests.rs` compiles without argument count mismatches.
+
+**Testing**  
+- Compile with `cargo test -p starfund_escrow --test test_allowlist_tests`.
+
+---
+
+## Issue #82 — `release_budget_tests.rs` Fails Compilation Due to Missing `token_decimals` Argument (18 vs 19)
+
+**Filed as:** [GitHub issue #101](https://github.com/ushpraise/Starfund-contracts/issues/101)
+
+**Category:** Testing / Compile-Blocker  
+**Priority:** Critical  
+**Suggested Complexity:** Low  
+
+**Location:**
+- `escrow/src/release_budget_tests.rs` (lines 54–73)
+- `escrow/src/lib.rs` (lines 3073–3094)
+
+**Problem**  
+In `escrow/src/release_budget_tests.rs`, function `deploy` calls `client.init(...)` with 18 arguments, omitting the newly added 19th argument `token_decimals`.
+
+**Why it matters**  
+Causes compiler error `E0061: this function takes 19 arguments but 18 arguments were supplied`. The release budget regression test suite cannot run.
+
+**Proposed solution**  
+Pass `&None::<u32>` as the 19th argument in `release_budget_tests.rs`.
+
+**Acceptance criteria**  
+- `release_budget_tests.rs` compiles cleanly.
+
+**Testing**  
+- Compile with `cargo test -p starfund_escrow --test release_budget_tests`.
+
+---
+
+## Issue #83 — `tests/dispute_release.rs` Asserts Invalid State Transition (`withdraw()` at Status 0)
+
+**Filed as:** [GitHub issue #102](https://github.com/ushpraise/Starfund-contracts/issues/102)
+
+**Category:** Testing / Bug  
+**Priority:** Medium  
+**Suggested Complexity:** Low  
+
+**Location:**
+- `escrow/src/tests/dispute_release.rs` (lines 35–43)
+
+**Problem**  
+In `tests/dispute_release.rs`:
+```rust
+#[test]
+fn release_before_dispute_succeeds() {
+    let (_, client, _, _) = funded_client();
+    let before = client.get_escrow();
+    assert_eq!(before.status, 0);
+
+    let released = client.withdraw();
+    assert_eq!(released.status, 3);
+}
+```
+The test explicitly asserts `before.status == 0` and then invokes `client.withdraw()`.
+In `withdraw()`, line 7056 enforces:
+`guard_status_eq(&env, escrow.status, 1, EscrowError::WithdrawalNotFunded);`
+`withdraw()` requires status `1` (Funded). Calling it when `status == 0` reverts with `WithdrawalNotFunded`.
+
+**Why it matters**  
+This test contains an invalid assumption about contract state transitions and will fail whenever executed against the real contract implementation.
+
+**Proposed solution**  
+Fund the escrow up to `funding_target` in `funded_client` so that `status == 1` before invoking `withdraw()`.
+
+**Acceptance criteria**  
+- Test sets escrow status to `1` before asserting `withdraw()` behavior.
+
+**Testing**  
+- Run `cargo test dispute_release`.
+
+---
+
+## Issue #84 — OpenAPI Test Suite in `docs/tests/openapi.test.js` is Not Executed in CI
+
+**Filed as:** [GitHub issue #103](https://github.com/ushpraise/Starfund-contracts/issues/103)
+
+**Category:** CI/CD  
+**Priority:** Medium  
+**Suggested Complexity:** Low  
+
+**Location:**
+- `.github/workflows/ci.yml`
+- `docs/package.json`
+- `docs/tests/openapi.test.js`
+
+**Problem**  
+The repository includes a Node.js test suite in `docs/tests/openapi.test.js` that verifies OpenAPI 3.1 schema compliance. However, `.github/workflows/ci.yml` only runs Rust cargo steps and never installs Node dependencies or runs `npm test` from `docs/`.
+
+**Why it matters**  
+Schema regressions, syntax errors, or schema divergences in `docs/openapi.yaml` are not caught during pull requests or CI runs.
+
+**Proposed solution**  
+Add a job or step to `.github/workflows/ci.yml`:
+```yaml
+- name: Run OpenAPI validation
+  working-directory: docs
+  run: |
+    npm ci
+    npm test
+```
+
+**Acceptance criteria**  
+- CI workflow validates `docs/openapi.yaml` using `openapi.test.js`.
+
+**Testing**  
+- Run `npm test` inside `docs/` and verify pass.
+
+---
+
+## Issue #85 — Severe Drift Between `docs/openapi.yaml` and Smart Contract Data Models
+
+**Filed as:** [GitHub issue #104](https://github.com/ushpraise/Starfund-contracts/issues/104)
+
+**Category:** Documentation  
+**Priority:** Medium  
+**Suggested Complexity:** Medium  
+
+**Location:**
+- `docs/openapi.yaml` (lines 67–95)
+- `escrow/src/lib.rs` (`InvoiceEscrow` struct line 1410)
+
+**Problem**  
+In `docs/openapi.yaml`, the `InvoiceEscrow` component schema defines properties:
+- `buyer_address` (required)
+- `is_paid` (required)
+- `amount` as `int64`
+In the smart contract `InvoiceEscrow`:
+- The role is `payer`, not `buyer_address`.
+- There is an `admin: Address` field (missing from OpenAPI).
+- There is a `dispute_active: bool` field (missing from OpenAPI).
+- `amount`, `funding_target`, and `funded_amount` are 128-bit integers (`i128`), which exceed `int64`.
+
+**Why it matters**  
+API clients generating bindings from `openapi.yaml` will fail to deserialize escrow records returned from indexers or RPC endpoints.
+
+**Proposed solution**  
+Update `docs/openapi.yaml` to match `InvoiceEscrow` in `escrow/src/lib.rs`, replacing `buyer_address` with `payer`, adding `admin` and `dispute_active`, and updating integer schemas.
+
+**Acceptance criteria**  
+- `docs/openapi.yaml` field definitions match `InvoiceEscrow` in `escrow/src/lib.rs`.
+
+**Testing**  
+- Run `npm test` in `docs/` after updating test fixtures.
+
+---
+
+## Issue #86 — `docs/EVENT_SCHEMA.md` Falsely Documents Trailing `version` Topic for All Events
+
+**Filed as:** [GitHub issue #105](https://github.com/ushpraise/Starfund-contracts/issues/105)
+
+**Category:** Documentation  
+**Priority:** Medium  
+**Suggested Complexity:** Low  
+
+**Location:**
+- `docs/EVENT_SCHEMA.md` (lines 34–38)
+- `escrow/src/lib.rs` (contract event definitions)
+
+**Problem**  
+`docs/EVENT_SCHEMA.md` asserts:
+`Every event in this contract emits a trailing schema version topic. It is a #[topic] Symbol named version with value v1. It is always the final topic in the topic list, after all other #[topic] fields. Indexers MUST ignore this extra topic...`
+In `escrow/src/lib.rs`, **no event struct** defines a `version` topic. Events only emit the specific fields marked with `#[topic]` in their struct definitions.
+
+**Why it matters**  
+Off-chain indexers built according to `EVENT_SCHEMA.md` that expect a trailing `version` topic will fail to decode every single event emitted by `StarfundEscrow`.
+
+**Proposed solution**  
+Update `docs/EVENT_SCHEMA.md` to remove the incorrect claim regarding a universal trailing `version` topic, and accurately document each event's topic list.
+
+**Acceptance criteria**  
+- `docs/EVENT_SCHEMA.md` accurately describes actual Soroban contract event topics.
+
+---
+
+## Issue #87 — `AdminTransferredEvent` Defined in `lib.rs` and Documented in `EVENT_SCHEMA.md` is Never Emitted
+
+**Filed as:** [GitHub issue #106](https://github.com/ushpraise/Starfund-contracts/issues/106)
+
+**Category:** Bug / Events  
+**Priority:** Medium  
+**Suggested Complexity:** Low  
+
+**Location:**
+- `escrow/src/lib.rs` (`AdminTransferredEvent` line 2126, `accept_admin` line 7955)
+- `docs/EVENT_SCHEMA.md` (line 52)
+
+**Problem**  
+`AdminTransferredEvent` is declared as a `#[contractevent]` struct at line 2126 and documented in `EVENT_SCHEMA.md` as emitted by `accept_admin`.
+However, `accept_admin` actually emits `AdminAcceptedEvent`:
+```rust
+AdminAcceptedEvent {
+    name: symbol_short!("adm_acc"),
+    invoice_id: escrow.invoice_id.clone(),
+    prior_admin,
+    new_admin: pending,
+}
+.publish(&env);
+```
+`AdminTransferredEvent` is completely unreferenced dead code.
+
+**Why it matters**  
+Indexers following `EVENT_SCHEMA.md` listen for topic `admin` / `AdminTransferredEvent` and miss all admin acceptance events.
+
+**Proposed solution**  
+Reconcile `AdminAcceptedEvent` and `AdminTransferredEvent`. Either update `accept_admin` to emit `AdminTransferredEvent` or update documentation to reference `AdminAcceptedEvent`.
+
+**Acceptance criteria**  
+- Event definition, emission in `accept_admin`, and documentation in `EVENT_SCHEMA.md` are aligned.
+
+**Testing**  
+- Assert emitted event type in `tests/admin.rs`.
+
+---
+
+## Issue #88 — `update_maturity` Lacks Lower Bound Check Against `funding_deadline`
+
+**Filed as:** [GitHub issue #107](https://github.com/ushpraise/Starfund-contracts/issues/107)
+
+**Category:** Bug  
+**Priority:** High  
+**Suggested Complexity:** Low  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::update_maturity()` (lines 7453–7485)
+- `validate_maturity_bounds()` (lines 1206–1220)
+
+**Problem**  
+In `update_maturity`, the new maturity timestamp is validated via `validate_maturity_bounds(&env, new_maturity, max_horizon)`. That helper only verifies:
+`new_maturity >= now` and `new_maturity <= now + max_horizon`.
+It **does not check `funding_deadline`**.
+At `init` (line 3216) and `extend_funding_deadline` (line 7595), the contract strictly enforces:
+`deadline < maturity` (`EscrowError::FundingDeadlineAtOrAfterMaturity`).
+
+**Why it matters**  
+An admin calling `update_maturity` can reduce `maturity` to a timestamp before `funding_deadline`, violating the invariant that funding closes before the invoice matures.
+
+**Proposed solution**  
+In `update_maturity`, if `funding_deadline` is set, ensure:
+```rust
+if let Some(deadline) = env.storage().instance().get(&keys::funding_deadline()) {
+    ensure(&env, deadline < new_maturity, EscrowError::FundingDeadlineAtOrAfterMaturity);
+}
+```
+
+**Acceptance criteria**  
+- `update_maturity` rejects new maturities that are less than or equal to the configured funding deadline.
+
+**Testing**  
+- Add test setting funding deadline to 1000 and attempting `update_maturity` to 900.
+
+---
+
+## Issue #89 — `update_maturity` Lacks Admin Nonce Replay Protection
+
+**Filed as:** [GitHub issue #108](https://github.com/ushpraise/Starfund-contracts/issues/108)
+
+**Category:** Security  
+**Priority:** Medium  
+**Suggested Complexity:** Low  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::update_maturity()` (lines 7453–7485)
+
+**Problem**  
+`update_maturity(env: Env, new_maturity: u64)` requires admin authorization via `Self::load_escrow_require_admin(&env)`. However, it does not accept an `expected_nonce: u32` parameter and does not invoke `consume_admin_nonce`.
+
+**Why it matters**  
+Admin actions altering contract timelines should be protected against signature replay in multi-sig scenarios.
+
+**Proposed solution**  
+Add `expected_nonce: u32` to `update_maturity` and consume it with `Self::consume_admin_nonce(&env, expected_nonce)`.
+
+**Acceptance criteria**  
+- `update_maturity` consumes an admin nonce.
+
+**Testing**  
+- Verify nonce increment and error on nonce mismatch.
+
+---
+
+## Issue #90 — `update_yield_bps` Fails to Enforce Documented Zero-Funded Invariant
+
+**Filed as:** [GitHub issue #109](https://github.com/ushpraise/Starfund-contracts/issues/109)
+
+**Category:** Bug / Security  
+**Priority:** High  
+**Suggested Complexity:** Low  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::update_yield_bps()` (lines 7487–7543)
+
+**Problem**  
+The rustdoc for `update_yield_bps` states:
+`/// Only valid while the escrow is in open status (status == 0) — i.e. before any investor has funded... Once investors have committed principal the yield rate is effectively locked...`
+However, the implementation only checks:
+```rust
+guard_status_eq(&env, escrow.status, 0, EscrowError::YieldBpsUpdateNotOpen);
+```
+It **never checks `escrow.funded_amount == 0`**.
+
+**Why it matters**  
+While an escrow is open (`status == 0`), investors may have already deposited funds (e.g. 5,000 out of a 10,000 target). An admin can call `update_yield_bps` and alter the base yield after investors have already committed funds, changing their expected payout.
+
+**Proposed solution**  
+Add validation:
+```rust
+ensure(&env, escrow.funded_amount == 0, EscrowError::YieldBpsUpdateFunded);
+```
+
+**Acceptance criteria**  
+- `update_yield_bps` reverts if `escrow.funded_amount > 0`.
+
+**Testing**  
+- Add test funding 100 units and verifying `try_update_yield_bps` fails.
+
+---
+
+## Issue #91 — `update_funding_target` Lacks Upper Bound Check Against `MAX_INVOICE_AMOUNT`
+
+**Filed as:** [GitHub issue #110](https://github.com/ushpraise/Starfund-contracts/issues/110)
+
+**Category:** Bug  
+**Priority:** Medium  
+**Suggested Complexity:** Low  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::update_funding_target()` (lines 5862–5910)
+
+**Problem**  
+In `update_funding_target`, the function validates:
+`new_target > 0` and `new_target >= escrow.funded_amount`.
+However, it never verifies `new_target <= MAX_INVOICE_AMOUNT`.
+At `init`, `amount <= MAX_INVOICE_AMOUNT` is enforced.
+
+**Why it matters**  
+An admin could set `new_target` to `i128::MAX`, creating arithmetic overflow vulnerabilities in coupon or pro-rata math.
+
+**Proposed solution**  
+Add `ensure(&env, new_target <= MAX_INVOICE_AMOUNT, EscrowError::AmountExceedsMax);`.
+
+**Acceptance criteria**  
+- `update_funding_target` rejects values exceeding `MAX_INVOICE_AMOUNT`.
+
+**Testing**  
+- Test calling `update_funding_target` with `MAX_INVOICE_AMOUNT + 1`.
+
+---
+
+## Issue #92 — `update_funding_target` Omits `FundingStateChanged` Event on Promotion to Funded
+
+**Filed as:** [GitHub issue #111](https://github.com/ushpraise/Starfund-contracts/issues/111)
+
+**Category:** Bug / Events  
+**Priority:** Low  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::update_funding_target()` (lines 5880–5908)
+- `docs/EVENT_SCHEMA.md` (line 49)
+
+**Problem**  
+When `update_funding_target` lowers the target such that `escrow.funded_amount >= new_target`, it mutates `escrow.status = 1` and creates the `FundingCloseSnapshot`.
+However, it only emits `FundingTargetUpdated`. `docs/EVENT_SCHEMA.md` explicitly lists `update_funding_target` as an emitter of `FundingStateChanged`.
+
+**Why it matters**  
+Indexers listening for `FundingStateChanged` to track when escrows transition to status `1` will miss state changes triggered by target updates.
+
+**Proposed solution**  
+Emit `FundingStateChanged` when `update_funding_target` transitions `status` to `1`.
+
+**Acceptance criteria**  
+- `FundingStateChanged` is emitted upon status promotion in `update_funding_target`.
+
+**Testing**  
+- Verify `FundingStateChanged` event is present in `env.events().all()`.
+
+---
+
+## Issue #93 — `partial_settle` Permits Execution on Zero-Funded Escrows
+
+**Filed as:** [GitHub issue #112](https://github.com/ushpraise/Starfund-contracts/issues/112)
+
+**Category:** Bug  
+**Priority:** High  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::partial_settle()` (lines 6715–6763)
+
+**Problem**  
+`partial_settle` transitions an open escrow (`status == 0`) to funded (`status == 1`) and captures `FundingCloseSnapshot`.
+However, it does not check whether `escrow.funded_amount > 0`.
+
+**Why it matters**  
+An SME or admin can call `partial_settle` on an escrow with zero investor contributions. This writes a `FundingCloseSnapshot` with `total_principal = 0`. Subsequent calls to `withdraw()` or `compute_investor_payout()` encounter zero-principal division edge cases.
+
+**Proposed solution**  
+Add validation:
+```rust
+ensure(&env, escrow.funded_amount > 0, EscrowError::PartialSettleNoFunds);
+```
+
+**Acceptance criteria**  
+- `partial_settle` reverts if `escrow.funded_amount == 0`.
+
+**Testing**  
+- Add test attempting `partial_settle` on a freshly initialized escrow.
+
+---
+
+## Issue #94 — `partial_settle` Lacks Operational Pause Check
+
+**Filed as:** [GitHub issue #113](https://github.com/ushpraise/Starfund-contracts/issues/113)
+
+**Category:** Bug  
+**Priority:** Medium  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::partial_settle()` (lines 6715–6763)
+
+**Problem**  
+`partial_settle` checks legal hold and dispute, but omits `guard_not_paused`.
+
+**Why it matters**  
+An operational pause should freeze all settlement and funding state transitions.
+
+**Proposed solution**  
+Add `guard_not_paused(&env, EscrowError::PausedBlocksSettlement, PauseEntry::Settlement);` to `partial_settle()`.
+
+**Acceptance criteria**  
+- `partial_settle` reverts when settlement operations are paused.
+
+**Testing**  
+- Add test pausing settlement and verifying `partial_settle` reverts.
+
+---
+
+## Issue #95 — `set_investors_allowlisted` (Batch) Never Saves Updated `AllowlistIndex` to Storage
+
+**Filed as:** [GitHub issue #114](https://github.com/ushpraise/Starfund-contracts/issues/114)
+
+**Category:** Bug  
+**Priority:** Critical  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::set_investors_allowlisted()` (lines 5744–5782)
+
+**Problem**  
+In `StarfundEscrow::set_investors_allowlisted`:
+Line 5744 loads the allowlist index:
+```rust
+let mut index: Vec<Address> = env.storage().instance().get(&DataKey::AllowlistIndex).unwrap_or_else(|| Vec::new(&env));
+```
+Inside the loop, `index.push_back(inv.clone())` or `index.remove(j)` is called.
+However, at the end of the function (lines 5774–5782), **`env.storage().instance().set(&DataKey::AllowlistIndex, &index);` is never called!**
+In contrast, the single-address variant `set_investor_allowlisted` correctly calls `.set(&DataKey::AllowlistIndex, &index)` at line 5701.
+
+**Why it matters**  
+Any address allowlisted via the batch function `set_investors_allowlisted` is never added to `AllowlistIndex` in storage. Consequently, `get_allowlisted_investors()` and `get_allowlisted_investors_count()` will return empty results or omit batch-allowlisted addresses entirely.
+
+**Proposed solution**  
+Add `env.storage().instance().set(&DataKey::AllowlistIndex, &index);` after the batch processing loop in `set_investors_allowlisted`.
+
+**Acceptance criteria**  
+- Batch-allowlisted addresses are persisted to `DataKey::AllowlistIndex`.
+- `get_allowlisted_investors()` returns addresses added via `set_investors_allowlisted`.
+
+**Testing**  
+- Add test calling `set_investors_allowlisted` and asserting `client.get_allowlisted_investors_count() == batch_size`.
+
+---
+
+## Issue #96 — `get_allowlisted_investors_count` Performs Unbounded Persistent Storage Reads
+
+**Filed as:** [GitHub issue #115](https://github.com/ushpraise/Starfund-contracts/issues/115)
+
+**Category:** Performance / Gas  
+**Priority:** High  
+**Suggested Complexity:** Medium  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::get_allowlisted_investors_count()` (lines 5835–5855)
+
+**Problem**  
+In `get_allowlisted_investors_count`:
+```rust
+let mut count: u32 = 0;
+for i in 0..index.len() {
+    let addr = index.get(i).unwrap();
+    let is_al: bool = env.storage().persistent().get(&DataKey::InvestorAllowlisted(addr.clone())).unwrap_or(false);
+    if is_al { count += 1; }
+}
+```
+The function iterates over the entire `AllowlistIndex` and executes a persistent storage read for every address.
+
+**Why it matters**  
+If an escrow has hundreds of allowlisted investors, calling this view issues hundreds of storage read operations in a single invocation, easily exceeding Soroban transaction CPU and storage read limits.
+
+**Proposed solution**  
+Maintain an explicit `DataKey::AllowlistCount` counter in instance storage that increments when an address is allowlisted and decrements when revoked, allowing $O(1)$ reads.
+
+**Acceptance criteria**  
+- `get_allowlisted_investors_count` executes in $O(1)$ without looping over persistent storage.
+
+**Testing**  
+- Verify count remains accurate across multiple additions and revocations.
+
+---
+
+## Issue #97 — `AllowlistIndex` Stored in Instance Storage Risks Exceeding Soroban Ledger Size Limit
+
+**Filed as:** [GitHub issue #116](https://github.com/ushpraise/Starfund-contracts/issues/116)
+
+**Category:** Storage / Architecture  
+**Priority:** High  
+**Suggested Complexity:** Medium  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `DataKey::AllowlistIndex` (lines 1354, 5686, 5747)
+
+**Problem**  
+`DataKey::AllowlistIndex` stores a `Vec<Address>` in `instance()` storage. In Soroban, an address is 32 bytes plus XDR overhead. A vector of hundreds of addresses stored in instance storage will exceed the 64KB ledger entry size limit.
+
+**Why it matters**  
+Once the 64KB instance storage limit is reached, any contract invocation that loads or updates instance storage will fail.
+
+**Proposed solution**  
+Migrate allowlist pagination to persistent storage pages or store allowlist indices under paginated keys `DataKey::AllowlistPage(u32)`.
+
+**Acceptance criteria**  
+- Instance storage does not contain unbounded address collections.
+
+**Testing**  
+- Add test benchmarking storage size with 500 allowlisted addresses.
+
+---
+
+## Issue #98 — `rotate_beneficiary` Lacks Operational Pause and Dispute Gates
+
+**Filed as:** [GitHub issue #117](https://github.com/ushpraise/Starfund-contracts/issues/117)
+
+**Category:** Bug / Security  
+**Priority:** Medium  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::rotate_beneficiary()` (lines 3615–3655)
+
+**Problem**  
+`rotate_beneficiary` verifies `guard_not_legal_hold`, but does not call `guard_not_paused` or `guard_not_disputed`.
+
+**Why it matters**  
+Beneficiary rotation redirects future SME disbursements. If an escrow is disputed or paused due to compromised credentials, rotating the beneficiary during the freeze undermines security controls.
+
+**Proposed solution**  
+Add:
+```rust
+guard_not_paused(&env, EscrowError::PausedBlocksBeneficiaryRotation, PauseEntry::Admin);
+guard_not_disputed(&env, EscrowError::DisputeBlocksBeneficiaryRotation);
+```
+
+**Acceptance criteria**  
+- `rotate_beneficiary` is blocked when paused or disputed.
+
+**Testing**  
+- Add tests verifying rotation reverts during active dispute or pause.
+
+---
+
+## Issue #99 — `rotate_payer` Lacks Operational Pause and Dispute Gates
+
+**Filed as:** [GitHub issue #118](https://github.com/ushpraise/Starfund-contracts/issues/118)
+
+**Category:** Bug / Security  
+**Priority:** Medium  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::rotate_payer()` (lines 3689–3722)
+
+**Problem**  
+`rotate_payer` verifies legal hold, but omits operational pause and dispute checks.
+
+**Why it matters**  
+Payer rotation changes the authorized settlement and repayment address. It must be frozen when a dispute or pause is active.
+
+**Proposed solution**  
+Add `guard_not_paused` and `guard_not_disputed` to `rotate_payer()`.
+
+**Acceptance criteria**  
+- `rotate_payer` is blocked when paused or disputed.
+
+**Testing**  
+- Test rotation reverts when dispute is open.
+
+---
+
+## Issue #100 — `rotate_payer` Allows Rotation After Funding Has Commenced
+
+**Filed as:** [GitHub issue #119](https://github.com/ushpraise/Starfund-contracts/issues/119)
+
+**Category:** Bug / Security  
+**Priority:** Medium  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::rotate_payer()` (lines 3694–3698)
+
+**Problem**  
+In `rotate_beneficiary`, line 3633 strictly requires:
+`ensure(&env, escrow.funded_amount == 0, EscrowError::BeneficiaryImmutableAfterFunding);`
+In `rotate_payer`, line 3694 only checks `escrow.status == 0 || escrow.status == 1`. It never checks `escrow.funded_amount == 0`.
+
+**Why it matters**  
+Allowing payer rotation after funding has begun allows changing the repayment counterparty mid-flight without investor consent.
+
+**Proposed solution**  
+Ensure `rotate_payer` requires `escrow.funded_amount == 0` or requires dual auth from both prior payer and SME.
+
+**Acceptance criteria**  
+- Payer cannot be arbitrarily rotated once funding is underway.
+
+**Testing**  
+- Add test attempting payer rotation on an escrow with non-zero funded amount.
+
+---
+
+## Issue #101 — Missing Non-Existent Paginated View Functions in `tests/paginated_views.rs`
+
+**Filed as:** [GitHub issue #120](https://github.com/ushpraise/Starfund-contracts/issues/120)
+
+**Category:** Documentation / Testing  
+**Priority:** Low  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/tests/paginated_views.rs` (lines 1–4)
+
+**Problem**  
+The header of `tests/paginated_views.rs` claims:
+`// Tests for the shared paginate_window helper and the public paginated read views:`
+`//   get_investors, get_allowlisted_investors, get_revoked_attestation_digests,`
+`//   get_collateral_records, get_pause_records, and get_settlement_records.`
+Functions `get_collateral_records`, `get_pause_records`, and `get_settlement_records` do not exist in the contract.
+
+**Why it matters**  
+Misleads auditors into believing these paginated audit views exist.
+
+**Proposed solution**  
+Update the test file header to accurately list the existing views, or implement the missing paginated views.
+
+**Acceptance criteria**  
+- Test file header accurately reflects implemented contract functions.
+
+---
+
+## Issue #102 — Truncating Integer Division Causes Cumulative Rounding Residue in `compute_investor_payout`
+
+**Filed as:** [GitHub issue #121](https://github.com/ushpraise/Starfund-contracts/issues/121)
+
+**Category:** Bug / Math  
+**Priority:** Medium  
+**Suggested Complexity:** Medium  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::compute_investor_payout()` (lines 7358–7374)
+
+**Problem**  
+In `compute_investor_payout`:
+```rust
+let coupon = total_principal
+    .checked_mul(effective_yield_bps as i128).unwrap()
+    .checked_div(10_000).unwrap();
+let settle_pool = total_principal + coupon;
+let payout = contribution.checked_mul(settle_pool).unwrap().checked_div(total_principal).unwrap();
+```
+Integer division truncates twice: first when computing `coupon = total_principal * bps / 10000`, and second when computing `payout = contribution * settle_pool / total_principal`.
+
+**Why it matters**  
+Truncating intermediate results prematurely exaggerates rounding loss against retail investors, leaving larger residual dust in the contract.
+
+**Proposed solution**  
+Compute payout with full 256-bit rational multiplication before dividing:
+$$\text{payout} = \frac{\text{contribution} \times (10{,}000 + \text{effective\_yield\_bps})}{10{,}000}$$
+
+**Acceptance criteria**  
+- Single-division arithmetic reduces intermediate rounding loss.
+
+**Testing**  
+- Add property tests comparing intermediate vs single-division precision.
+
+---
+
+## Issue #103 — `get_funding_records` Returns 2-Tuple `Vec<(Address, i128)>` Instead of Typed Struct
+
+**Filed as:** [GitHub issue #122](https://github.com/ushpraise/Starfund-contracts/issues/122)
+
+**Category:** DevEx / API  
+**Priority:** Low  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::get_funding_records()` (lines 4326–4348)
+
+**Problem**  
+`get_funding_records` returns `Vec<(Address, i128)>`. In Soroban contract interfaces, bare tuples in vectors have poorer client SDK code generation than named structs.
+
+**Why it matters**  
+Client SDKs (TypeScript / Python) generate awkward positional accessors (`entry[0]`, `entry[1]`) instead of self-documenting field names (`entry.investor`, `entry.contribution`).
+
+**Proposed solution**  
+Define a `#[contracttype]` struct:
+```rust
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FundingRecord {
+    pub investor: Address,
+    pub contribution: i128,
+}
+```
+and return `Vec<FundingRecord>`.
+
+**Acceptance criteria**  
+- `get_funding_records` returns `Vec<FundingRecord>`.
+
+**Testing**  
+- Update pagination tests to assert on struct fields.
+
+---
+
+## Issue #104 — `get_funding_records` Returns Zero-Balance Entries for Unfunded Investors
+
+**Filed as:** [GitHub issue #123](https://github.com/ushpraise/Starfund-contracts/issues/123)
+
+**Category:** Bug  
+**Priority:** Low  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::get_funding_records()` (lines 4341–4347)
+
+**Problem**  
+When an investor calls `unfund()` to withdraw all principal, their contribution becomes `0`. However, they remain in `InvestorIndex`. When `get_funding_records` is queried, it includes `(investor, 0)`.
+
+**Why it matters**  
+Callers expect `get_funding_records` to return active participants with positive contributions.
+
+**Proposed solution**  
+Filter out entries where `contribution == 0` or clean up `InvestorIndex` upon full unfund.
+
+**Acceptance criteria**  
+- `get_funding_records` only returns active investors with positive principal.
+
+**Testing**  
+- Test that an investor who unfunds to zero does not appear with contribution `0`.
+
+---
+
+## Issue #105 — `DistributedPrincipal` Accounting Mismatch Between `release()` and `withdraw()`
+
+**Filed as:** [GitHub issue #124](https://github.com/ushpraise/Starfund-contracts/issues/124)
+
+**Category:** Bug / Accounting  
+**Priority:** High  
+**Suggested Complexity:** Medium  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::release()` (lines 6920–6940)
+- `StarfundEscrow::withdraw()` (lines 7101–7110)
+- `StarfundEscrow::sweep_terminal_dust()` (lines 3514–3520)
+
+**Problem**  
+`DataKey::DistributedPrincipal` tracks how much principal has been disbursed.
+In `withdraw()` (line 7108):
+`DistributedPrincipal` is incremented by `amount = funded_amount - released_amount`.
+In `release()`:
+`DistributedPrincipal` is **never incremented**!
+In `sweep_terminal_dust()` (line 3519):
+`outstanding = escrow.funded_amount.saturating_sub(distributed);`
+
+**Why it matters**  
+If an escrow disburses principal via `release()`, `DistributedPrincipal` remains lower than the true disbursed amount. `sweep_terminal_dust` then falsely calculates that released funds are still "outstanding liability", causing valid dust sweeps to revert with `EscrowError::SweepExceedsLiabilityFloor`.
+
+**Proposed solution**  
+Increment `DataKey::DistributedPrincipal` atomically inside `release()` whenever principal is disbursed to the SME.
+
+**Acceptance criteria**  
+- `release()` updates `DataKey::DistributedPrincipal` by the released amount.
+- `DistributedPrincipal` accurately equals total disbursed principal across both release paths.
+
+**Testing**  
+- Test calling `release()`, then verifying `client.get_distributed_principal() == released_amount`.
+
+---
+
+## Issue #106 — Missing Upper Bound Validation on `min_contribution_floor` in `raise_min_contribution_floor`
+
+**Filed as:** [GitHub issue #125](https://github.com/ushpraise/Starfund-contracts/issues/125)
+
+**Category:** Bug  
+**Priority:** Medium  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `raise_min_contribution_floor` (proposed admin setter)
+- `init` (line 3166)
+
+**Problem**  
+At `init`, line 3166 enforces:
+`ensure(&env, mc <= amount, EscrowError::MinContributionExceedsAmount);`
+When the admin raises `min_contribution_floor`, there must be an upper bound check ensuring the new floor does not exceed `escrow.funding_target`.
+
+**Why it matters**  
+Setting `min_contribution_floor > funding_target` permanently prevents any investor from funding, because any contribution meeting the floor would exceed the funding target.
+
+**Proposed solution**  
+Ensure `new_floor <= escrow.funding_target` in the floor setter.
+
+**Acceptance criteria**  
+- Raising min contribution floor above `funding_target` reverts with `MinContributionExceedsAmount`.
+
+**Testing**  
+- Add test attempting to raise floor above funding target.
+
+---
+
+## Issue #107 — Missing Validation for `token_decimals` Against Live SEP-41 Token Metadata
+
+**Filed as:** [GitHub issue #126](https://github.com/ushpraise/Starfund-contracts/issues/126)
+
+**Category:** Enhancement / Safety  
+**Priority:** Medium  
+**Suggested Complexity:** Medium  
+
+**Location:**
+- `escrow/src/lib.rs`
+- `StarfundEscrow::init()` (lines 3144–3148)
+- `docs/ESCROW_TOKEN_INTEGRATION_CHECKLIST.md`
+
+**Problem**  
+`init()` accepts an optional `token_decimals: Option<u32>`. It persists this value directly without checking `TokenClient::new(&env, &funding_token).decimals()`.
+
+**Why it matters**  
+If an operator passes a mismatched decimal value (e.g. 6 instead of 7 for USDC), scale-dependent calculations or off-chain balance projections will miscalculate by orders of magnitude.
+
+**Proposed solution**  
+When `token_decimals` is provided, query `TokenClient::decimals()` and assert equality:
+```rust
+if let Some(dec) = token_decimals {
+    let actual = TokenClient::new(&env, &funding_token).decimals();
+    ensure(&env, dec == actual, EscrowError::TokenDecimalsMismatch);
+}
+```
+
+**Acceptance criteria**  
+- `init()` validates `token_decimals` against the token contract.
+
+**Testing**  
+- Test that initializing with wrong decimals reverts with `TokenDecimalsMismatch`.
+
+---
+
+## Issue #108 — `docs/escrow-ledger-time.md` References Non-Existent String Assert Messages
+
+**Filed as:** [GitHub issue #127](https://github.com/ushpraise/Starfund-contracts/issues/127)
+
+**Category:** Documentation  
+**Priority:** Low  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `docs/escrow-ledger-time.md` (lines 29, 44)
+
+**Problem**  
+`docs/escrow-ledger-time.md` contains code snippets claiming the contract uses string assertion panics:
+```rust
+assert!(now >= escrow.maturity, "Escrow has not yet reached maturity");
+assert!(now >= not_before, "Investor commitment lock not expired (ledger timestamp)");
+```
+The contract uses Soroban `ensure!(&env, ..., EscrowError::MaturityNotReached)` with typed error codes.
+
+**Why it matters**  
+Misleads integrators on error-handling mechanisms.
+
+**Proposed solution**  
+Update code snippets in `docs/escrow-ledger-time.md` to show actual `ensure!` and `EscrowError` usage.
+
+**Acceptance criteria**  
+- Documentation displays accurate typed error handling code snippets.
+
+---
+
+## Issue #109 — Cargo Workspace Configuration Excludes Tests From Coverage but CI Specifies `testutils`
+
+**Filed as:** [GitHub issue #128](https://github.com/ushpraise/Starfund-contracts/issues/128)
+
+**Category:** Tooling / CI  
+**Priority:** Low  
+**Suggested Complexity:** Trivial  
+
+**Location:**
+- `Cargo.toml` (lines 5–11)
+- `.github/workflows/ci.yml` (lines 53–56)
+
+**Problem**  
+In root `Cargo.toml`:
+```toml
+[workspace.metadata.cargo-llvm-cov]
+exclude = [
+    "src/test/*",
+    "**/*_test.rs",
+    "tests/*"
+]
+```
+In `.github/workflows/ci.yml`:
+`cargo llvm-cov --features testutils --summary-only -p starfund_escrow`
+The exclude pattern in `Cargo.toml` uses `tests/*` which does not match `escrow/src/tests/*`.
+
+**Why it matters**  
+Inconsistent exclusion paths lead to test scaffolding being counted in production code coverage metrics.
+
+**Proposed solution**  
+Update exclude patterns to `"escrow/src/tests/**"`.
+
+**Acceptance criteria**  
+- Coverage measurement only evaluates production contract code.
+
+---
+
+## Issue #110 — Missing Property Test for `unfund` Conservation and Unique Funder Count Monotonicity
+
+**Filed as:** [GitHub issue #129](https://github.com/ushpraise/Starfund-contracts/issues/129)
+
+**Category:** Testing  
+**Priority:** Medium  
+**Suggested Complexity:** Medium  
+
+**Location:**
+- `escrow/src/tests/properties.rs`
+
+**Problem**  
+The proptest suite in `escrow/src/tests/properties.rs` validates funding caps, fee splits, and release conservation, but has no property-based invariant test for arbitrary interleaved sequences of `fund` and `unfund` calls.
+
+**Why it matters**  
+Arbitrary user sequences of funding, partial unfunding, full unfunding, and re-funding are prime vectors for state desynchronization.
+
+**Proposed solution**  
+Add a stateful proptest in `properties.rs` asserting:
+1. `escrow.funded_amount == sum(investor_contributions)`
+2. `UniqueFunderCount == count(contributions > 0)`
+3. Contract token balance equals `escrow.funded_amount` throughout all open-phase actions.
+
+**Acceptance criteria**  
+- Property test executes 100+ randomized iterations verifying conservation across fund/unfund operations.
+
+**Testing**  
+- Run `cargo test -p starfund_escrow --test properties`.
+
+---
+
+# Summary Table: Published Issues (#51 through #110)
+
+| Wave # | GitHub Issue | Title | Category | Priority | Complexity | Primary Location |
+|---|---|---|---|---|---|---|
+| #51 | [#70](https://github.com/ushpraise/Starfund-contracts/issues/70) | State Corruption: `sweep_terminal_dust` unconditionally sets `status = 2` on Cancelled escrows | Bug / Security | Critical | Medium | `escrow/src/lib.rs:3536` |
+| #52 | [#71](https://github.com/ushpraise/Starfund-contracts/issues/71) | `settle()` never writes `DataKey::SettledAt`, breaking `get_settled_at()` and settlement audits | Bug | High | Trivial | `escrow/src/lib.rs:6825–6830` |
+| #53 | [#72](https://github.com/ushpraise/Starfund-contracts/issues/72) | `settle()` permits transition to Settled without verifying contract token balance covers `settle_pool` | Bug / Security | High | Medium | `escrow/src/lib.rs:6810–6830` |
+| #54 | [#73](https://github.com/ushpraise/Starfund-contracts/issues/73) | Duplicate storage writes and redundant checks in `StarfundEscrow::init` | Refactor / Gas | Medium | Medium | `escrow/src/lib.rs:3131–3296` |
+| #55 | [#74](https://github.com/ushpraise/Starfund-contracts/issues/74) | `init()` references non-existent error `EscrowError::FundingDeadlineBeyondMaturity` | Bug / Compile-Blocker | Critical | Trivial | `escrow/src/lib.rs:3217` |
+| #56 | [#75](https://github.com/ushpraise/Starfund-contracts/issues/75) | `InvestorRefunded` stored in instance storage violates ADR-007 and risks instance storage exhaustion | Bug / Storage | High | Medium | `escrow/src/lib.rs:8168` |
+| #57 | [#76](https://github.com/ushpraise/Starfund-contracts/issues/76) | `unfund()` emits misleading `OverWithdrawal` on non-positive amounts and misplaces validation | Bug | Low | Trivial | `escrow/src/lib.rs:8306–8308` |
+| #58 | [#77](https://github.com/ushpraise/Starfund-contracts/issues/77) | `unfund()` to zero desynchronizes `InvestorIndex` and `UniqueFunderCount`, corrupting re-funding | Bug | High | Medium | `escrow/src/lib.rs:8319–8330` |
+| #59 | [#78](https://github.com/ushpraise/Starfund-contracts/issues/78) | `bump_ttl()` panics on non-existent persistent keys and contains duplicate loops | Bug | High | Medium | `escrow/src/lib.rs:7779–7820` |
+| #60 | [#79](https://github.com/ushpraise/Starfund-contracts/issues/79) | Missing implementation for `StarfundEscrow::batch_bump_ttl` (orphaned doc comment) | Bug / DevEx | Medium | Medium | `escrow/src/lib.rs:7822–7859` |
+| #61 | [#80](https://github.com/ushpraise/Starfund-contracts/issues/80) | Unrealistic 1s/ledger assumptions in TTL constants exceed Soroban `max_entry_ttl` | Bug / Storage | High | Low | `escrow/src/lib.rs:494–496` |
+| #62 | [#81](https://github.com/ushpraise/Starfund-contracts/issues/81) | Triplicate divergent dispute representations allow dispute check bypass in `close_escrow` | Bug / Security | High | Medium | `escrow/src/lib.rs:285, 3863, 3899` |
+| #63 | [#82](https://github.com/ushpraise/Starfund-contracts/issues/82) | Missing events for `open_dispute` and `close_dispute` | Bug / Events | Medium | Low | `escrow/src/lib.rs:3878–3940` |
+| #64 | [#83](https://github.com/ushpraise/Starfund-contracts/issues/83) | `close_dispute` silent early return when `resolved == false` | Bug | Low | Trivial | `escrow/src/lib.rs:3936–3939` |
+| #65 | [#84](https://github.com/ushpraise/Starfund-contracts/issues/84) | `CloseError` enum discriminants collide with `EscrowError` on-chain | Bug | High | Low | `escrow/src/lib.rs:209–222` |
+| #66 | [#85](https://github.com/ushpraise/Starfund-contracts/issues/85) | `request_clear_legal_hold` allows scheduling clear on non-existent legal holds | Bug | Medium | Trivial | `escrow/src/lib.rs:5574–5597` |
+| #67 | [#86](https://github.com/ushpraise/Starfund-contracts/issues/86) | Redundant consecutive pause checks in `withdraw()` and `settle()` | Refactor / Gas | Low | Trivial | `escrow/src/lib.rs:7040–7050` |
+| #68 | [#87](https://github.com/ushpraise/Starfund-contracts/issues/87) | `withdraw()` lacks `amount > 0` guard, permitting zero-payout execution and event | Bug | Medium | Trivial | `escrow/src/lib.rs:7058–7110` |
+| #69 | [#88](https://github.com/ushpraise/Starfund-contracts/issues/88) | `settle_batch` requires target SME cross-contract signatures, failing batch settlements | Bug | High | Medium | `escrow/src/lib.rs:6871–6885` |
+| #70 | [#89](https://github.com/ushpraise/Starfund-contracts/issues/89) | `set_storage_limit` lacks admin nonce replay protection and event emission | Bug / Security | Medium | Low | `escrow/src/lib.rs:7738–7750` |
+| #71 | [#90](https://github.com/ushpraise/Starfund-contracts/issues/90) | `cancel_funding` lacks dispute gate, permitting cancellation during active dispute | Bug / Security | High | Trivial | `escrow/src/lib.rs:8108–8127` |
+| #72 | [#91](https://github.com/ushpraise/Starfund-contracts/issues/91) | `cancel_funding` ignores operational pause gates | Bug | Medium | Trivial | `escrow/src/lib.rs:8108–8127` |
+| #73 | [#92](https://github.com/ushpraise/Starfund-contracts/issues/92) | `refund_batch` passes `false` to `skip_zero_contribution`, breaking batch execution on zero balance | Bug | Medium | Trivial | `escrow/src/lib.rs:8250` |
+| #74 | [#93](https://github.com/ushpraise/Starfund-contracts/issues/93) | `InvestorPayoutClaimed` event omits payout amount | Bug / Events | Medium | Trivial | `escrow/src/lib.rs:2385–2392` |
+| #75 | [#94](https://github.com/ushpraise/Starfund-contracts/issues/94) | Economic discrepancy: `settle()` and `get_settlement_pool()` use base yield while `compute_investor_payout()` uses investor tiered yields | Bug / Security | High | High | `escrow/src/lib.rs:6810–6823, 7350–7374` |
+| #76 | [#95](https://github.com/ushpraise/Starfund-contracts/issues/95) | Tuple destructuring compile error in `fund_impl` tier selection | Bug / Compile-Blocker | Critical | Trivial | `escrow/src/lib.rs:6542–6543` |
+| #77 | [#96](https://github.com/ushpraise/Starfund-contracts/issues/96) | Inbound token transfer parameter naming in `transfer_funding_token_with_balance_checks` | Refactor / Code Quality | Low | Trivial | `escrow/src/external_calls.rs:106–112` |
+| #78 | [#97](https://github.com/ushpraise/Starfund-contracts/issues/97) | Lack of self-transfer guard in `external_calls.rs` causes confusing delta errors | Bug | Low | Trivial | `escrow/src/external_calls.rs:113–145` |
+| #79 | [#98](https://github.com/ushpraise/Starfund-contracts/issues/98) | Clean up commented-out test modules in `escrow/src/tests/mod.rs` | Testing / DevEx | Low | Trivial | `escrow/src/tests/mod.rs:64–66` |
+| #80 | [#99](https://github.com/ushpraise/Starfund-contracts/issues/99) | Missing `collateral_pledge_key` function referenced in `escrow/src/keys.rs` docs | Documentation / DevEx | Low | Trivial | `escrow/src/keys.rs:13–17` |
+| #81 | [#100](https://github.com/ushpraise/Starfund-contracts/issues/100) | `test_allowlist_tests.rs` fails compilation due to outdated `client.init` argument count (15 vs 19) | Testing / Compile-Blocker | Critical | Low | `escrow/src/test_allowlist_tests.rs:19–35` |
+| #82 | [#101](https://github.com/ushpraise/Starfund-contracts/issues/101) | `release_budget_tests.rs` fails compilation due to missing `token_decimals` argument (18 vs 19) | Testing / Compile-Blocker | Critical | Low | `escrow/src/release_budget_tests.rs:54–73` |
+| #83 | [#102](https://github.com/ushpraise/Starfund-contracts/issues/102) | `tests/dispute_release.rs` asserts invalid state transition (`withdraw()` at status 0) | Testing / Bug | Medium | Low | `escrow/src/tests/dispute_release.rs:35–43` |
+| #84 | [#103](https://github.com/ushpraise/Starfund-contracts/issues/103) | OpenAPI test suite in `docs/tests/openapi.test.js` is not executed in CI | CI/CD | Medium | Low | `.github/workflows/ci.yml` |
+| #85 | [#104](https://github.com/ushpraise/Starfund-contracts/issues/104) | Severe drift between `docs/openapi.yaml` and smart contract data models | Documentation | Medium | Medium | `docs/openapi.yaml:67–95` |
+| #86 | [#105](https://github.com/ushpraise/Starfund-contracts/issues/105) | `docs/EVENT_SCHEMA.md` falsely documents trailing `version` topic for all events | Documentation | Medium | Low | `docs/EVENT_SCHEMA.md:34–38` |
+| #87 | [#106](https://github.com/ushpraise/Starfund-contracts/issues/106) | `AdminTransferredEvent` defined in `lib.rs` and documented in `EVENT_SCHEMA.md` is never emitted | Bug / Events | Medium | Low | `escrow/src/lib.rs:2126, 7955` |
+| #88 | [#107](https://github.com/ushpraise/Starfund-contracts/issues/107) | `update_maturity` lacks lower bound check against `funding_deadline` | Bug | High | Low | `escrow/src/lib.rs:7453–7485` |
+| #89 | [#108](https://github.com/ushpraise/Starfund-contracts/issues/108) | `update_maturity` lacks admin nonce replay protection | Security | Medium | Low | `escrow/src/lib.rs:7453–7485` |
+| #90 | [#109](https://github.com/ushpraise/Starfund-contracts/issues/109) | `update_yield_bps` fails to enforce documented zero-funded invariant | Bug / Security | High | Low | `escrow/src/lib.rs:7487–7543` |
+| #91 | [#110](https://github.com/ushpraise/Starfund-contracts/issues/110) | `update_funding_target` lacks upper bound check against `MAX_INVOICE_AMOUNT` | Bug | Medium | Low | `escrow/src/lib.rs:5862–5910` |
+| #92 | [#111](https://github.com/ushpraise/Starfund-contracts/issues/111) | `update_funding_target` omits `FundingStateChanged` event on promotion to funded | Bug / Events | Low | Trivial | `escrow/src/lib.rs:5880–5908` |
+| #93 | [#112](https://github.com/ushpraise/Starfund-contracts/issues/112) | `partial_settle` permits execution on zero-funded escrows | Bug | High | Trivial | `escrow/src/lib.rs:6715–6763` |
+| #94 | [#113](https://github.com/ushpraise/Starfund-contracts/issues/113) | `partial_settle` lacks operational pause check | Bug | Medium | Trivial | `escrow/src/lib.rs:6715–6763` |
+| #95 | [#114](https://github.com/ushpraise/Starfund-contracts/issues/114) | `set_investors_allowlisted` (batch) never saves updated `AllowlistIndex` to storage | Bug | Critical | Trivial | `escrow/src/lib.rs:5744–5782` |
+| #96 | [#115](https://github.com/ushpraise/Starfund-contracts/issues/115) | `get_allowlisted_investors_count` performs unbounded persistent storage reads | Performance / Gas | High | Medium | `escrow/src/lib.rs:5835–5855` |
+| #97 | [#116](https://github.com/ushpraise/Starfund-contracts/issues/116) | `AllowlistIndex` stored in instance storage risks exceeding Soroban ledger size limit | Storage / Architecture | High | Medium | `escrow/src/lib.rs:5686, 5747` |
+| #98 | [#117](https://github.com/ushpraise/Starfund-contracts/issues/117) | `rotate_beneficiary` lacks operational pause and dispute gates | Bug / Security | Medium | Trivial | `escrow/src/lib.rs:3615–3655` |
+| #99 | [#118](https://github.com/ushpraise/Starfund-contracts/issues/118) | `rotate_payer` lacks operational pause and dispute gates | Bug / Security | Medium | Trivial | `escrow/src/lib.rs:3689–3722` |
+| #100 | [#119](https://github.com/ushpraise/Starfund-contracts/issues/119) | `rotate_payer` allows rotation after funding has commenced | Bug / Security | Medium | Trivial | `escrow/src/lib.rs:3694–3698` |
+| #101 | [#120](https://github.com/ushpraise/Starfund-contracts/issues/120) | Missing non-existent paginated view functions in `tests/paginated_views.rs` | Documentation / Testing | Low | Trivial | `escrow/src/tests/paginated_views.rs:1–4` |
+| #102 | [#121](https://github.com/ushpraise/Starfund-contracts/issues/121) | Truncating integer division causes cumulative rounding residue in `compute_investor_payout` | Bug / Math | Medium | Medium | `escrow/src/lib.rs:7358–7374` |
+| #103 | [#122](https://github.com/ushpraise/Starfund-contracts/issues/122) | `get_funding_records` returns 2-tuple `Vec<(Address, i128)>` instead of typed struct | DevEx / API | Low | Trivial | `escrow/src/lib.rs:4326–4348` |
+| #104 | [#123](https://github.com/ushpraise/Starfund-contracts/issues/123) | `get_funding_records` returns zero-balance entries for unfunded investors | Bug | Low | Trivial | `escrow/src/lib.rs:4341–4347` |
+| #105 | [#124](https://github.com/ushpraise/Starfund-contracts/issues/124) | `DistributedPrincipal` accounting mismatch between `release()` and `withdraw()` | Bug / Accounting | High | Medium | `escrow/src/lib.rs:6920–6940, 7108` |
+| #106 | [#125](https://github.com/ushpraise/Starfund-contracts/issues/125) | Missing upper bound validation on `min_contribution_floor` in `raise_min_contribution_floor` | Bug | Medium | Trivial | `escrow/src/lib.rs:3166` |
+| #107 | [#126](https://github.com/ushpraise/Starfund-contracts/issues/126) | Missing validation for `token_decimals` against live SEP-41 token metadata | Enhancement / Safety | Medium | Medium | `escrow/src/lib.rs:3144–3148` |
+| #108 | [#127](https://github.com/ushpraise/Starfund-contracts/issues/127) | `docs/escrow-ledger-time.md` references non-existent string assert messages | Documentation | Low | Trivial | `docs/escrow-ledger-time.md:29, 44` |
+| #109 | [#128](https://github.com/ushpraise/Starfund-contracts/issues/128) | Cargo workspace configuration excludes tests from coverage but CI specifies `testutils` | Tooling / CI | Low | Trivial | `Cargo.toml:5–11`, `.github/workflows/ci.yml:53–56` |
+| #110 | [#129](https://github.com/ushpraise/Starfund-contracts/issues/129) | Missing property test for `unfund` conservation and unique funder count monotonicity | Testing | Medium | Medium | `escrow/src/tests/properties.rs` |
