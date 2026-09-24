@@ -2386,6 +2386,30 @@ pub struct CollateralClearedEvt {
 }
 
 #[contractevent]
+pub struct CallbackRegisteredEvent {
+    #[topic]
+    pub name: Symbol,
+    #[topic]
+    pub invoice_id: Symbol,
+    #[topic]
+    pub origin: Address,
+    pub nonce: u64,
+    pub phase: u32,
+}
+
+#[contractevent]
+pub struct CallbackExecutedEvent {
+    #[topic]
+    pub name: Symbol,
+    #[topic]
+    pub invoice_id: Symbol,
+    #[topic]
+    pub origin: Address,
+    pub nonce: u64,
+    pub phase: u32,
+}
+
+#[contractevent]
 pub struct SmeWithdrew {
     #[topic]
     pub name: Symbol,
